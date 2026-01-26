@@ -1,0 +1,29 @@
+:root {
+    --kpizzas-red: #D82626;
+    --kpizzas-dark: #343a40;
+}
+
+.bg-kpizzas-red {
+    background-color: var(--kpizzas-red) !important;
+}
+
+.btn-kpizzas-red {
+    background-color: var(--kpizzas-red);
+    border-color: var(--kpizzas-red);
+    color: white;
+}
+
+.btn-kpizzas-red:hover {
+    background-color: #A91E1E;
+    border-color: #A91E1E;
+}
+
+.card {
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}

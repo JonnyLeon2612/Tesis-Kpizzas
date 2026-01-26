@@ -1,0 +1,288 @@
+/* caja.css - Diseño moderno para módulo de caja */
+:root {
+    --kpizzas-red: #D82626;
+    --kpizzas-red-dark: #B51F1F;
+    --primary: #007bff;
+    --success: #28a745;
+    --warning: #ffc107;
+    --info: #17a2b8;
+}
+
+.bg-kpizzas-red {
+    background-color: var(--kpizzas-red) !important;
+}
+
+.text-kpizzas-red {
+    color: var(--kpizzas-red) !important;
+}
+
+/* Header con gradiente */
+.bg-gradient-primary {
+    background: linear-gradient(135deg, var(--kpizzas-red) 0%, #ff6b6b 100%) !important;
+}
+
+/* Tarjeta de ventas */
+.sales-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.sales-card .border-start {
+    border-left: 2px solid #e9ecef !important;
+}
+
+/* Títulos de sección */
+.section-title {
+    color: #2c3e50;
+    font-weight: 700;
+    border-bottom: 3px solid var(--kpizzas-red);
+    padding-bottom: 0.5rem;
+}
+
+.section-subtitle {
+    color: #495057;
+    font-weight: 600;
+    border-left: 4px solid var(--info);
+    padding-left: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Estados vacíos */
+.empty-state {
+    background: #f8f9fa;
+    border-radius: 15px;
+    border: 2px dashed #dee2e6;
+}
+
+/* Tarjetas de pedido */
+.pedido-card {
+    border: none;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.pedido-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+}
+
+/* Headers de pedido */
+.pedido-header {
+    padding: 1.25rem 1.5rem;
+    color: white;
+    border: none;
+}
+
+.header-mesa {
+    background: linear-gradient(135deg, var(--primary) 0%, #0056b3 100%);
+}
+
+.header-llevar {
+    background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%);
+}
+
+.header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1rem;
+    font-size: 1.25rem;
+}
+
+/* Items de información */
+.info-item {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+
+/* Detalles del pedido */
+.detalles-pedido {
+    display: none;
+}
+
+.detalles-pedido.mostrar {
+    display: block;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Tarjetas de pizza */
+.pizza-card {
+    background: white;
+    border-radius: 10px;
+    padding: 1.25rem;
+    border: 1px solid #e9ecef;
+    height: 100%;
+    transition: all 0.3s ease;
+}
+
+.pizza-card:hover {
+    border-color: var(--warning);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.15);
+}
+
+.pizza-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #f8f9fa;
+}
+
+.tamanio-badge {
+    background: var(--warning);
+    color: #000;
+    font-weight: 600;
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+}
+
+.ingredientes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ingrediente-item {
+    background: #f8f9fa;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    border-left: 3px solid var(--success);
+}
+
+/* Tarjetas de bebida */
+.bebida-card {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: between;
+    transition: all 0.3s ease;
+}
+
+.bebida-card:hover {
+    border-color: var(--primary);
+    transform: translateX(5px);
+}
+
+.bebida-nombre {
+    flex: 1;
+    font-weight: 500;
+}
+
+.bebida-cantidad {
+    background: var(--primary);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 15px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Botones mejorados */
+.btn {
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--success) 0%, #20c997 100%);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, #0056b3 100%);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .pedido-header .row > div {
+        margin-bottom: 1rem;
+    }
+    
+    .text-end {
+        text-align: left !important;
+    }
+    
+    .header-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+        margin-right: 0.75rem;
+    }
+    
+    .sales-card .border-start {
+        border-left: none !important;
+        border-top: 2px solid #e9ecef !important;
+        padding-top: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .info-item {
+        margin-bottom: 0.5rem;
+    }
+    
+    .pizza-card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Animaciones adicionales */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Scroll suave */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Estilos para mostrar montos en bolívares */
+.text-success {
+    font-weight: 600;
+}
+
+/* Estilo para la información de tasa */
+.bg-light.rounded {
+    background-color: #f8f9fa !important;
+    border: 1px solid #dee2e6;
+}
+
+/* Ajuste para los totales en las tarjetas de pedido */
+.h6.text-success {
+    font-size: 0.9rem;
+    font-weight: 600;
+}

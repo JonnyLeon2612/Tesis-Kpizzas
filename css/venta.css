@@ -1,0 +1,168 @@
+:root {
+  --kpizzas-red: #D82626;
+  --kpizzas-dark: #343a40;
+}
+
+.bg-kpizzas-red { background-color: var(--kpizzas-red) !important; }
+.btn-kpizzas-red {
+  background-color: var(--kpizzas-red);
+  border-color: var(--kpizzas-red);
+  color: white;
+}
+.btn-kpizzas-red:hover { 
+  background-color: #A91E1E; 
+  border-color: #A91E1E; 
+}
+
+.card { border-radius: 12px; }
+
+.mesa-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.mesa {
+    padding: 2rem;
+    text-align: center;
+    border: 2px solid #ccc;
+    border-radius: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.2s, background-color 0.2s, border-color 0.2s;
+}
+
+.mesa:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.mesa-disponible {
+    background-color: #f8f9fa;
+    border-color: #ccc;
+}
+
+.mesa-ocupada {
+    background-color: #ffc107;
+    border-color: #d68c00;
+    color: #fff;
+}
+
+.mesa-en-proceso {
+    background-color: #0d6efd;
+    border-color: #0a58ca;
+    color: #fff;
+}
+
+#order-form-section {
+  display: none;
+}
+
+body {
+    min-height: 100vh;        /* Ocupa toda la altura de la pantalla */
+    display: flex;            /* Activa flexbox */
+    flex-direction: column;   /* Organiza los elementos en columna */
+}
+
+.container.my-5 {
+    flex: 1;                  /* Hace que este contenedor crezca y ocupe todo el espacio disponible */
+}
+
+/* Footer siempre abajo */
+footer {
+    margin-top: auto;         /* Empuja el footer hacia abajo automáticamente */
+}
+
+/* ========== NOTIFICACIONES EN TIEMPO REAL ========== */
+.sweetalert-notification {
+    font-size: 14px;
+    min-width: 300px;
+    border-radius: 12px !important;
+}
+
+.sweetalert-notification .swal2-title {
+    font-size: 16px;
+    color: #198754;
+    font-weight: 600;
+}
+
+/* Animación para notificaciones */
+@keyframes pulse-notification {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.swal2-popup {
+    animation: pulse-notification 0.5s ease-in-out;
+}
+
+/* Estilos específicos para notificaciones de pedidos listos */
+.notification-pedido-listo {
+    border-left: 4px solid #198754 !important;
+}
+
+/* Estados mejorados para mesas */
+.mesa-disponible {
+    background-color: #d4edda !important;
+    border-color: #28a745 !important;
+    color: #155724 !important;
+}
+
+.mesa-ocupada {
+    background-color: #fff3cd !important;
+    border-color: #ffc107 !important;
+    color: #856404 !important;
+}
+
+.mesa-reservada {
+    background-color: #f8d7da !important;
+    border-color: #dc3545 !important;
+    color: #721c24 !important;
+}
+
+/* Mejoras visuales para las opciones de servicio */
+.servicio-option {
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.servicio-option:hover {
+    transform: translateY(-5px);
+    border-color: var(--kpizzas-red);
+    box-shadow: 0 4px 15px rgba(216, 38, 38, 0.2);
+}
+
+.servicio-option.selected {
+    border-color: var(--kpizzas-red);
+    background-color: rgba(216, 38, 38, 0.05);
+}
+
+/* Responsive para notificaciones */
+@media (max-width: 768px) {
+    .sweetalert-notification {
+        min-width: 90% !important;
+        margin: 0 10px !important;
+    }
+    
+    .swal2-popup {
+        width: 95% !important;
+    }
+}
+
+/* Estilos para la sección de totales duales */
+.totales-container {
+    border-top: 2px solid #e9ecef;
+    padding-top: 1rem;
+}
+
+/* Mejora visual para los montos en bolívares */
+.text-success {
+    font-weight: 600;
+}
+
+/* Estilo para la información de tasa */
+.bg-light.rounded {
+    background-color: #f8f9fa !important;
+    border: 1px solid #dee2e6;
+}

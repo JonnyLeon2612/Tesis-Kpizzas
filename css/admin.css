@@ -1,0 +1,148 @@
+:root {
+    --kpizzas-red: #D82626;
+    --kpizzas-dark: #343a40;
+}
+
+.bg-kpizzas-red {
+    background-color: var(--kpizzas-red) !important;
+}
+
+.btn-kpizzas-red {
+    background-color: var(--kpizzas-red);
+    border-color: var(--kpizzas-red);
+    color: white;
+}
+
+.btn-kpizzas-red:hover {
+    background-color: #A91E1E;
+    border-color: #A91E1E;
+}
+
+.card {
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}/* admin.css - Estilos generales del panel de administración */
+:root {
+    --kpizza-red: #d32f2f;
+    --kpizza-red-dark: #b71c1c;
+    --kpizza-orange: #ff9800;
+    --text-dark: #333333;
+    --text-light: #666666;
+    --bg-light: #f8f9fa;
+    --border-color: #dee2e6;
+}
+
+/* Estilos generales */
+body {
+    background-color: var(--bg-light);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-dark);
+}
+
+.bg-red-kpizza {
+    background-color: var(--kpizza-red) !important;
+}
+
+.text-kpizza-red {
+    color: var(--kpizza-red) !important;
+}
+
+/* Header */
+.navbar-dark {
+    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%) !important;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.25rem;
+}
+
+/* Sidebar */
+.sidebar {
+    background-color: #fff;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    min-height: calc(100vh - 56px);
+}
+
+.sidebar .nav-link {
+    color: var(--text-dark);
+    padding: 12px 15px;
+    border-radius: 5px;
+    margin-bottom: 2px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.sidebar .nav-link:hover {
+    background-color: #e9ecef;
+    color: var(--kpizza-red);
+}
+
+.sidebar .nav-link.active {
+    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%);
+    color: white;
+}
+
+.sidebar .nav-link i {
+    width: 20px;
+    text-align: center;
+}
+
+/* Main Content */
+.main-content {
+    background-color: var(--bg-light);
+    min-height: calc(100vh - 56px);
+    padding-top: 20px;
+}
+
+/* Utilidades */
+.border-bottom {
+    border-color: var(--border-color) !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        top: 56px;
+        bottom: 0;
+        left: -100%;
+        z-index: 1000;
+        transition: left 0.3s ease;
+        width: 250px;
+    }
+    
+    .sidebar.show {
+        left: 0;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+}
+
+/* SweetAlert personalizado */
+.swal2-popup {
+    border-radius: 15px !important;
+}
+
+.sweetalert-custom .swal2-title {
+    color: var(--text-dark);
+}
+
+.swal2-confirm {
+    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%) !important;
+    border: none !important;
+    border-radius: 8px !important;
+}
+
+.swal2-cancel {
+    background: #6c757d !important;
+    border: none !important;
+    border-radius: 8px !important;
+}

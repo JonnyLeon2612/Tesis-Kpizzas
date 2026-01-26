@@ -1,0 +1,175 @@
+/* cocina.css - Versión con SweetAlert2 */
+:root {
+    --kpizzas-red: #D82626;
+    --kpizzas-red-dark: #B51F1F;
+}
+
+.bg-kpizzas-red {
+    background-color: var(--kpizzas-red) !important;
+}
+
+/* Estilos principales */
+.pedido-card {
+    transition: all 0.3s ease;
+    border-left: 4px solid var(--kpizzas-red);
+    margin-bottom: 1rem;
+}
+.pedido-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.estado-en_preparacion { 
+    border-left-color: #ffc107; 
+    background-color: rgba(255, 193, 7, 0.05);
+}
+.estado-listo { 
+    border-left-color: #198754; 
+    background-color: rgba(25, 135, 84, 0.05);
+}
+
+.detalles-pedido {
+    display: none;
+    border-top: 1px solid #dee2e6;
+    padding-top: 1rem;
+}
+
+.detalles-pedido.mostrar {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Estilos para pizzas individuales */
+.pizza-individual {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-left: 4px solid #ffc107 !important;
+}
+
+.pizza-individual:nth-child(even) {
+    border-left-color: #17a2b8 !important;
+}
+
+.pizza-individual:nth-child(odd) {
+    border-left-color: #28a745 !important;
+}
+
+/* Badges para ingredientes */
+.badge {
+    font-size: 0.75em;
+    padding: 0.4em 0.6em;
+}
+
+/* Mejoras para botones */
+.btn {
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Estilos para SweetAlert2 personalizados */
+.sweetalert-custom {
+    border-radius: 12px;
+}
+
+.sweetalert-confirm-btn {
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .pedido-card .row > div {
+        margin-bottom: 0.5rem;
+    }
+    
+    .text-end {
+        text-align: left !important;
+    }
+    
+    .btn {
+        width: 100%;
+        margin-bottom: 0.25rem;
+    }
+    
+    .pizza-individual {
+        padding: 1rem !important;
+    }
+}
+/* Estilos para notificaciones en cocina */
+.sweetalert-notification {
+    font-size: 14px;
+    min-width: 300px;
+    border-radius: 12px !important;
+}
+
+.sweetalert-notification .swal2-title {
+    font-size: 16px;
+    color: #198754;
+    font-weight: 600;
+}
+
+/* Animación para notificaciones en cocina */
+@keyframes slideInNotification {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.swal2-toast {
+    animation: slideInNotification 0.3s ease-out !important;
+}
+
+/* Mejoras para el tablero de cocina */
+.pedido-card.estado-listo {
+    background: linear-gradient(135deg, rgba(25, 135, 84, 0.1) 0%, rgba(25, 135, 84, 0.05) 100%);
+    border-left-color: #198754 !important;
+}
+
+.pedido-card.estado-en_preparacion {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%);
+    border-left-color: #ffc107 !important;
+}
+
+/* Badge de estado mejorado */
+.badge.bg-success {
+    background: linear-gradient(135deg, #198754, #20c997) !important;
+}
+
+.badge.bg-warning {
+    background: linear-gradient(135deg, #ffc107, #fd7e14) !important;
+    color: #000 !important;
+}
+
+/* Efectos hover mejorados */
+.pedido-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15) !important;
+}
+
+/* Responsive para cocina */
+@media (max-width: 768px) {
+    .sweetalert-notification {
+        min-width: 90% !important;
+        margin: 0 10px !important;
+    }
+    
+    .pedido-card {
+        margin-bottom: 1rem;
+    }
+    
+    .btn {
+        margin-bottom: 0.5rem;
+    }
+}
