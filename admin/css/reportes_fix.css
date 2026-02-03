@@ -1,0 +1,140 @@
+/* ==========================================
+   REPORTES FIX - KPIZZAS
+   Solución definitiva para gráficas Chart.js
+   ========================================== */
+
+/* 1. Ajuste del contenedor principal */
+.main-content {
+    padding-top: 0 !important;
+    padding-bottom: 40px !important;
+    overflow-x: hidden !important;
+}
+
+/* 2. Tarjeta contenedora (Estética) */
+.chart-container {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e0e0e0;
+    position: relative;
+    width: 100%;
+    /* No poner height fijo aquí, el contenido lo dictará */
+}
+
+/* Encabezado de la gráfica */
+.chart-header {
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+.chart-header h5 {
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+/* 3. EL SOLUCIONADOR: Wrapper estricto para el Canvas */
+/* Esto crea una caja de tamaño fijo donde vivirá la gráfica */
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 350px; /* Altura estándar para escritorio */
+    overflow: hidden; /* Evita desbordamientos */
+}
+
+/* 4. Asegurar que el canvas ocupe su wrapper */
+.chart-wrapper canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* 5. Estilos para Pestañas (Tabs) */
+.nav-pills .nav-link {
+    border-radius: 50px;
+    padding: 8px 20px;
+    font-weight: 500;
+    color: #555;
+    transition: all 0.3s ease;
+}
+
+.nav-pills .nav-link.active {
+    background-color: #d32f2f !important; /* Rojo Kpizza */
+    color: white !important;
+    box-shadow: 0 4px 6px rgba(211, 47, 47, 0.3);
+}
+
+/* 6. Tarjetas de Estadísticas (KPIs) */
+.stats-card {
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    color: white;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+    height: 120px;
+    position: relative;
+    overflow: hidden;
+}
+.stats-card:hover { transform: translateY(-3px); }
+.stats-icon { font-size: 2.5rem; margin-right: 15px; opacity: 0.8; }
+.stats-content h3 { font-size: 1.8rem; font-weight: 700; margin: 0; }
+.stats-content p { margin: 0; opacity: 0.9; font-size: 0.9rem; }
+
+/* Colores de tarjetas */
+.card-1 { background: linear-gradient(135deg, #FF9800, #F57C00); }
+.card-2 { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+.card-3 { background: linear-gradient(135deg, #2196F3, #1976D2); }
+.card-4 { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
+
+/* 7. AJUSTES RESPONSIVE (Móvil) */
+@media (max-width: 768px) {
+    .chart-container {
+        padding: 15px;
+    }
+    
+    /* Gráfica más pequeña en celular para que quepa bien */
+    .chart-wrapper {
+        height: 280px; 
+    }
+    
+    /* Ajustar fuente de tarjetas */
+    .stats-card {
+        height: 100px;
+        margin-bottom: 15px;
+    }
+    .stats-content h3 { font-size: 1.4rem; }
+    
+    /* Scroll horizontal para las pestañas en móvil */
+    .nav-pills {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 5px;
+    }
+}
+/* ==========================================
+   CABECERAS ROJAS PARA TODAS LAS TABLAS
+   ========================================== */
+
+/* Todas las tablas dentro del contenido principal */
+.main-content table thead th {
+    background-color: var(--kpizza-primary) !important;
+    color: white !important;
+    border-bottom: 3px solid var(--kpizza-dark) !important;
+}
+
+/* Para asegurar que sobrescriba cualquier estilo de Bootstrap */
+#reportesTabContent table thead th,
+#historial table thead th,
+#productos table thead th,
+#servicios table thead th {
+    background-color: var(--kpizza-primary) !important;
+    color: white !important;
+    border-bottom: 3px solid var(--kpizza-dark) !important;
+}

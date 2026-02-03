@@ -1,237 +1,254 @@
 <?php
+// Configuración de Zona Horaria
+date_default_timezone_set('America/Caracas');
+
 require_once __DIR__ . '/../../auth/middleware.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../config/tasa_helper.php';
 
+// Forzar zona horaria en BD
+try { 
+    $pdo->exec("SET time_zone = '-04:00'"); 
+} catch (Exception $e) {}
 
 require_role('admin');
 
+// --- CONFIGURACIÓN DE PAGINACIÓN ---
+$limit_historial = 10; // Cantidad de registros por página
+$pagina_historial = isset($_GET['pagina']) ? max(1, (int)$_GET['pagina']) : 1;
+$offset_historial = ($pagina_historial - 1) * $limit_historial;
+
+// --- FILTROS ---
 $fecha_desde = isset($_GET['desde']) ? $_GET['desde'] : date('Y-m-01');
 $fecha_hasta = isset($_GET['hasta']) ? $_GET['hasta'] : date('Y-m-d');
-
 $busqueda = isset($_GET['q']) ? trim($_GET['q']) : ''; 
 
-$tab_activa = !empty($busqueda) ? 'historial' : 'ventas';
-
+// CORRECCIÓN: Lógica estricta para la pestaña activa
+// Si hay búsqueda O si estamos paginando, activamos historial
+if (isset($_GET['tab']) && $_GET['tab'] === 'historial') {
+    $tab_activa = 'historial';
+} elseif (!empty($busqueda) || isset($_GET['pagina'])) {
+    $tab_activa = 'historial';
+} else {
+    $tab_activa = 'ventas';
+}
 
 class ReporteController {
     private $pdo;
     private $tasa_actual;
-
-    public function __construct($pdo, $tasa_actual) {
-        $this->pdo = $pdo;
-        $this->tasa_actual = $tasa_actual;
+    
+    public function __construct($pdo, $tasa_actual) { 
+        $this->pdo = $pdo; 
+        $this->tasa_actual = $tasa_actual; 
     }
 
-    public function obtenerHistorialVentas($inicio, $fin, $busqueda = '') {
+    // NUEVO: CONTAR REGISTROS PARA PAGINACIÓN
+    public function contarHistorialVentas($inicio, $fin, $busqueda = '') {
+        $sql = "SELECT COUNT(*) as total 
+                FROM pago p
+                INNER JOIN comanda c ON p.comanda_id = c.id
+                WHERE DATE(p.fecha_pago) BETWEEN :inicio AND :fin";
+        
+        $params = [':inicio' => $inicio, ':fin' => $fin];
+        
+        if (!empty($busqueda)) {
+            $sql .= " AND (c.id LIKE :b1 OR p.referencia LIKE :b2 OR p.banco_origen LIKE :b3)";
+            $params[':b1'] = $params[':b2'] = $params[':b3'] = "%$busqueda%";
+        }
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $res['total'] ?? 0;
+    }
+
+    // MODIFICADO: HISTORIAL CON LIMIT Y OFFSET
+    public function obtenerHistorialVentas($inicio, $fin, $busqueda = '', $limit = null, $offset = 0) {
         $sql = "
             SELECT 
                 c.id, 
-                c.fecha_creacion, 
+                p.fecha_pago,
                 c.total, 
                 c.tipo_servicio,
                 u.nombre as mesero,
-                -- Concatenamos datos relacionados para mostrar en una sola fila
-                GROUP_CONCAT(DISTINCT tp.nombre SEPARATOR ', ') as metodos_pago,
-                GROUP_CONCAT(DISTINCT p.referencia SEPARATOR ', ') as referencias,
-                GROUP_CONCAT(DISTINCT p.banco_origen SEPARATOR ', ') as bancos
-            FROM comanda c
-            JOIN usuario u ON c.usuario_id = u.id
-            LEFT JOIN pago p ON c.id = p.comanda_id
+                p.monto_total,
+                p.moneda_pago,
+                p.tasa_cambio as tasa_registrada,
+                tp.nombre as metodo_pago,
+                p.referencia,
+                p.banco_origen
+            FROM pago p
+            INNER JOIN comanda c ON p.comanda_id = c.id
+            INNER JOIN usuario u ON c.usuario_id = u.id
             LEFT JOIN tipo_pago tp ON p.tipo_pago_id = tp.id
-            WHERE c.estado = 'cobrado'
-            AND DATE(c.fecha_creacion) BETWEEN :inicio AND :fin
+            WHERE DATE(p.fecha_pago) BETWEEN :inicio AND :fin
         ";
-
+        
         $params = [':inicio' => $inicio, ':fin' => $fin];
-
-        if (!empty($busqueda)) {            $sql .= " AND (c.id LIKE :b1 OR p.referencia LIKE :b2 OR p.banco_origen LIKE :b3)";
-            $params[':b1'] = "%$busqueda%";
-            $params[':b2'] = "%$busqueda%";
+        
+        if (!empty($busqueda)) {
+            $sql .= " AND (c.id LIKE :b1 OR p.referencia LIKE :b2 OR p.banco_origen LIKE :b3)";
+            $params[':b1'] = "%$busqueda%"; 
+            $params[':b2'] = "%$busqueda%"; 
             $params[':b3'] = "%$busqueda%";
         }
+        
+        $sql .= " ORDER BY p.fecha_pago DESC";
+        
+        // Agregar Limit y Offset si se solicitan
+        if ($limit !== null) {
+            $sql .= " LIMIT :limit OFFSET :offset";
+        }
+        
+        try { 
+            $stmt = $this->pdo->prepare($sql);
+            
+            // Bind manual para Limit y Offset (deben ser enteros)
+            if ($limit !== null) {
+                $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
+            }
+            
+            // Bind del resto de parámetros
+            foreach ($params as $key => $val) {
+                $stmt->bindValue($key, $val);
+            }
+            
+            $stmt->execute(); 
+            return $stmt->fetchAll(PDO::FETCH_ASSOC); 
+        } catch (PDOException $e) { 
+            error_log("Error en obtenerHistorialVentas: " . $e->getMessage());
+            return []; 
+        }
+    }
 
-        $sql .= " GROUP BY c.id ORDER BY c.fecha_creacion DESC";
-
+    // --- RESTO DE FUNCIONES DE GRÁFICAS (SIN CAMBIOS) ---
+    public function obtenerVentasPorRango($i, $f) { 
+        $sql = "SELECT DATE(fecha_pago) as f, COUNT(id) as c, SUM(CASE WHEN moneda_pago='USD' THEN monto_total WHEN moneda_pago='BS' THEN monto_total/:t ELSE 0 END) as t FROM pago WHERE DATE(fecha_pago) BETWEEN :i AND :f GROUP BY DATE(fecha_pago) ORDER BY f ASC"; 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->execute(['t' => $this->tasa_actual, 'i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
-
-
-    public function obtenerVentasPorRango($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT DATE(fecha_pago) as fecha, COUNT(id) as total_pedidos,
-            SUM(CASE WHEN moneda_pago = 'USD' THEN monto_total WHEN moneda_pago = 'BS' THEN monto_total / :tasa_actual ELSE 0 END) as total_ventas_usd
-            FROM pago WHERE DATE(fecha_pago) BETWEEN :inicio AND :fin GROUP BY DATE(fecha_pago) ORDER BY fecha ASC
-        ");
-        $stmt->execute(['tasa_actual' => $this->tasa_actual, 'inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    public function obtenerVentasMensualesEnRango($i, $f) { 
+        $sql = "SELECT YEAR(fecha_pago) as y, MONTH(fecha_pago) as m, SUM(CASE WHEN moneda_pago='USD' THEN monto_total WHEN moneda_pago='BS' THEN monto_total/:t ELSE 0 END) as t FROM pago WHERE DATE(fecha_pago) BETWEEN :i AND :f GROUP BY y, m ORDER BY y, m"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['t' => $this->tasa_actual, 'i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
-
-    public function obtenerVentasMensualesEnRango($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT YEAR(fecha_pago) as año, MONTH(fecha_pago) as mes,
-            SUM(CASE WHEN moneda_pago = 'USD' THEN monto_total WHEN moneda_pago = 'BS' THEN monto_total / :tasa_actual ELSE 0 END) as total_ventas_usd
-            FROM pago WHERE DATE(fecha_pago) BETWEEN :inicio AND :fin GROUP BY YEAR(fecha_pago), MONTH(fecha_pago) ORDER BY año ASC, mes ASC
-        ");
-        $stmt->execute(['tasa_actual' => $this->tasa_actual, 'inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    public function obtenerVentasPorTipoServicio($i, $f) { 
+        $sql = "SELECT c.tipo_servicio as t, COUNT(p.id) as c, SUM(CASE WHEN p.moneda_pago='USD' THEN p.monto_total WHEN p.moneda_pago='BS' THEN p.monto_total/:t ELSE 0 END) as v FROM pago p INNER JOIN comanda c ON p.comanda_id=c.id WHERE DATE(p.fecha_pago) BETWEEN :i AND :f GROUP BY c.tipo_servicio"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['t' => $this->tasa_actual, 'i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
-
-    public function obtenerVentasPorTipoServicio($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT c.tipo_servicio, COUNT(p.id) as total_pedidos,
-            SUM(CASE WHEN p.moneda_pago = 'USD' THEN p.monto_total WHEN p.moneda_pago = 'BS' THEN p.monto_total / :tasa_actual ELSE 0 END) as total_ventas_usd
-            FROM pago p JOIN comanda c ON p.comanda_id = c.id 
-            WHERE DATE(p.fecha_pago) BETWEEN :inicio AND :fin GROUP BY c.tipo_servicio
-        ");
-        $stmt->execute(['tasa_actual' => $this->tasa_actual, 'inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    public function obtenerProductosMasVendidos($i, $f) { 
+        $sql = "SELECT CASE WHEN cp.nombre='Pizza Base' THEN CONCAT('Pizza ', dc.tamanio) ELSE p.nombre END AS n, cp.nombre as c, SUM(dc.cantidad) as q, SUM(dc.subtotal) as t FROM detalle_comanda dc INNER JOIN producto p ON dc.producto_id=p.id INNER JOIN categoria_producto cp ON p.categoria_id=cp.id INNER JOIN comanda c ON dc.comanda_id=c.id INNER JOIN pago pg ON c.id=pg.comanda_id WHERE c.estado='cobrado' AND DATE(pg.fecha_pago) BETWEEN :i AND :f GROUP BY n, c ORDER BY q DESC LIMIT 10"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
-
-    public function obtenerProductosMasVendidos($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT CASE WHEN cp.nombre = 'Pizza Base' THEN CONCAT('Pizza ', dc.tamanio) ELSE p.nombre END AS nombre,
-            cp.nombre as categoria, SUM(dc.cantidad) as total_vendido, SUM(dc.subtotal) as total_ingresos
-            FROM detalle_comanda dc JOIN producto p ON dc.producto_id = p.id 
-            JOIN categoria_producto cp ON p.categoria_id = cp.id JOIN comanda c ON dc.comanda_id = c.id
-            WHERE c.estado = 'cobrado' AND DATE(c.fecha_creacion) BETWEEN :inicio AND :fin 
-            GROUP BY nombre, categoria ORDER BY total_vendido DESC LIMIT 10
-        ");
-        $stmt->execute(['inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    public function obtenerVentasPorMesero($i, $f) { 
+        $sql = "SELECT u.nombre as n, c.tipo_servicio as t, SUM(c.total) as v, COUNT(c.id) as c FROM comanda c INNER JOIN usuario u ON c.usuario_id=u.id INNER JOIN rol r ON u.rol_id=r.id INNER JOIN pago pg ON c.id=pg.comanda_id WHERE c.estado='cobrado' AND r.nombre='mesero' AND DATE(pg.fecha_pago) BETWEEN :i AND :f GROUP BY n, t ORDER BY n, v DESC"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
-
-    public function obtenerVentasPorMesero($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT u.nombre as mesero_nombre, c.tipo_servicio, SUM(c.total) as total_ventas, COUNT(c.id) as total_pedidos
-            FROM comanda c JOIN usuario u ON c.usuario_id = u.id JOIN rol r ON u.rol_id = r.id
-            WHERE c.estado = 'cobrado' AND r.nombre = 'mesero' AND DATE(c.fecha_creacion) BETWEEN :inicio AND :fin 
-            GROUP BY u.nombre, c.tipo_servicio ORDER BY mesero_nombre, total_ventas DESC
-        ");
-        $stmt->execute(['inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    public function obtenerEstadisticasResumen($i, $f) { 
+        $sql = "SELECT COUNT(id) as c, SUM(CASE WHEN moneda_pago='USD' THEN monto_total WHEN moneda_pago='BS' THEN monto_total/:t ELSE 0 END) as v, SUM(CASE WHEN moneda_pago='USD' THEN monto_total ELSE 0 END) as u, SUM(CASE WHEN moneda_pago='BS' THEN monto_total ELSE 0 END) as b FROM pago WHERE DATE(fecha_pago) BETWEEN :i AND :f"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['t' => $this->tasa_actual, 'i' => $i, 'f' => $f]); 
+        return $stmt->fetch(PDO::FETCH_ASSOC); 
     }
-
-    public function obtenerEstadisticasResumen($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT COUNT(id) as total_pedidos,
-            SUM(CASE WHEN moneda_pago = 'USD' THEN monto_total WHEN moneda_pago = 'BS' THEN monto_total / :tasa ELSE 0 END) as total_ventas_usd,
-            SUM(CASE WHEN moneda_pago = 'USD' THEN monto_total ELSE 0 END) as usd_recibido,
-            SUM(CASE WHEN moneda_pago = 'BS' THEN monto_total ELSE 0 END) as bs_recibido
-            FROM pago WHERE DATE(fecha_pago) BETWEEN :inicio AND :fin
-        ");
-        $stmt->execute(['tasa' => $this->tasa_actual, 'inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    public function obtenerResumenMoneda($i, $f) { 
+        $sql = "SELECT moneda_pago as m, SUM(monto_total) as t FROM pago WHERE DATE(fecha_pago) BETWEEN :i AND :f GROUP BY m"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
-
-    public function obtenerResumenMoneda($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT moneda_pago, SUM(monto_total) as total FROM pago 
-            WHERE DATE(fecha_pago) BETWEEN :inicio AND :fin GROUP BY moneda_pago
-        ");
-        $stmt->execute(['inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    public function obtenerResumenTipoPago($inicio, $fin) {
-        $stmt = $this->pdo->prepare("
-            SELECT tp.nombre as tipo_pago, COUNT(p.id) as total_transacciones FROM pago p 
-            JOIN tipo_pago tp ON p.tipo_pago_id = tp.id 
-            WHERE DATE(p.fecha_pago) BETWEEN :inicio AND :fin GROUP BY tp.nombre ORDER BY total_transacciones DESC
-        ");
-        $stmt->execute(['inicio' => $inicio, 'fin' => $fin]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    public function obtenerResumenTipoPago($i, $f) { 
+        $sql = "SELECT tp.nombre as n, COUNT(p.id) as c FROM pago p INNER JOIN tipo_pago tp ON p.tipo_pago_id=tp.id WHERE DATE(p.fecha_pago) BETWEEN :i AND :f GROUP BY n ORDER BY c DESC"; 
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['i' => $i, 'f' => $f]); 
+        return $stmt->fetchAll(PDO::FETCH_ASSOC); 
     }
 }
 
 $tasa_actual = obtenerTasaDolarActual($pdo);
 $controller = new ReporteController($pdo, $tasa_actual);
 
+// --- OBTENCIÓN DE DATOS ---
+
+// 1. Datos Generales y Gráficas
 $ventas_rango = $controller->obtenerVentasPorRango($fecha_desde, $fecha_hasta);
-$ventas_mensuales = $controller->obtenerVentasMensualesEnRango($fecha_desde, $fecha_hasta);
-$ventas_servicio = $controller->obtenerVentasPorTipoServicio($fecha_desde, $fecha_hasta);
-$top_productos = $controller->obtenerProductosMasVendidos($fecha_desde, $fecha_hasta);
 $stats_resumen = $controller->obtenerEstadisticasResumen($fecha_desde, $fecha_hasta);
-$meseros_stats = $controller->obtenerVentasPorMesero($fecha_desde, $fecha_hasta);
 $moneda_data = $controller->obtenerResumenMoneda($fecha_desde, $fecha_hasta);
 $tipo_pago_data = $controller->obtenerResumenTipoPago($fecha_desde, $fecha_hasta);
+$top_productos = $controller->obtenerProductosMasVendidos($fecha_desde, $fecha_hasta);
+$ventas_mensuales = $controller->obtenerVentasMensualesEnRango($fecha_desde, $fecha_hasta);
+$ventas_servicio = $controller->obtenerVentasPorTipoServicio($fecha_desde, $fecha_hasta);
+$meseros_stats = $controller->obtenerVentasPorMesero($fecha_desde, $fecha_hasta);
 
-$historial_ventas = $controller->obtenerHistorialVentas($fecha_desde, $fecha_hasta, $busqueda);
+// 2. Datos de Historial con PAGINACIÓN
+$total_registros_historial = $controller->contarHistorialVentas($fecha_desde, $fecha_hasta, $busqueda);
+$total_paginas = ceil($total_registros_historial / $limit_historial);
+// Llamada corregida con limit y offset
+$historial_ventas = $controller->obtenerHistorialVentas($fecha_desde, $fecha_hasta, $busqueda, $limit_historial, $offset_historial);
 
-$js_ventas = []; 
-foreach ($ventas_rango as $v) $js_ventas[] = ['fecha' => date('d/m', strtotime($v['fecha'])), 'ventas' => (float)$v['total_ventas_usd']];
-
-$js_mensuales = []; 
-foreach ($ventas_mensuales as $v) $js_mensuales[] = ['mes' => DateTime::createFromFormat('!m', $v['mes'])->format('M') . ' ' . $v['año'], 'ventas' => (float)$v['total_ventas_usd']];
-
-$js_servicios = []; 
-foreach ($ventas_servicio as $s) $js_servicios[] = ['servicio' => $s['tipo_servicio'], 'ventas' => (float)$s['total_ventas_usd'], 'pedidos' => $s['total_pedidos']];
-
-$js_productos = []; 
-foreach ($top_productos as $p) $js_productos[] = ['producto' => $p['nombre'], 'vendidos' => (int)$p['total_vendido'], 'ingresos' => (float)$p['total_ingresos']];
-
-$js_meseros = []; 
-$temp_meseros = []; 
-foreach ($meseros_stats as $m) {
-    $nombre = $m['mesero_nombre'];
-    if (!isset($temp_meseros[$nombre])) $temp_meseros[$nombre] = ['mesero' => $nombre, 'Mesa' => 0, 'Llevar' => 0];
-    $temp_meseros[$nombre][$m['tipo_servicio']] = (float)$m['total_ventas'];
-}
-$js_meseros = array_values($temp_meseros);
-
-$js_moneda = []; 
-$usd_total = 0; $bs_total_en_usd = 0;
-foreach ($moneda_data as $m) {
-    if ($m['moneda_pago'] == 'USD') $usd_total += $m['total'];
-    if ($m['moneda_pago'] == 'BS') $bs_total_en_usd += ($m['total'] / $tasa_actual);
-}
-$js_moneda[] = ['moneda' => 'USD', 'total_convertido_usd' => $usd_total];
-$js_moneda[] = ['moneda' => 'BS', 'total_convertido_usd' => $bs_total_en_usd];
-
-$js_tipos = []; 
-foreach ($tipo_pago_data as $t) $js_tipos[] = ['tipo_pago' => $t['tipo_pago'], 'total_transacciones' => $t['total_transacciones']];
+// --- PREPARACIÓN JS (Sin cambios) ---
+$js_ventas = []; foreach ($ventas_rango as $v) { $js_ventas[] = ['fecha' => date('d/m', strtotime($v['f'])), 'ventas' => (float)$v['t']]; }
+$js_mensuales = []; foreach ($ventas_mensuales as $v) { $js_mensuales[] = ['mes' => DateTime::createFromFormat('!m', $v['m'])->format('M') . ' ' . $v['y'], 'ventas' => (float)$v['t']]; }
+$js_servicios = []; foreach ($ventas_servicio as $s) { $js_servicios[] = ['servicio' => $s['t'], 'ventas' => (float)$s['v'], 'pedidos' => (int)$s['c']]; }
+$js_productos = []; foreach ($top_productos as $p) { $js_productos[] = ['producto' => $p['n'], 'vendidos' => (int)$p['q'], 'ingresos' => (float)$p['t']]; }
+$js_meseros = []; $temp_meseros = []; foreach ($meseros_stats as $m) { $nombre = $m['n']; if (!isset($temp_meseros[$nombre])) { $temp_meseros[$nombre] = ['mesero' => $nombre, 'Mesa' => 0, 'Llevar' => 0]; } $temp_meseros[$nombre][$m['t']] = (float)$m['v']; } $js_meseros = array_values($temp_meseros);
+$js_moneda = []; $usd_total = 0; $bs_total_en_usd = 0; foreach ($moneda_data as $m) { if ($m['m'] == 'USD') $usd_total += $m['t']; if ($m['m'] == 'BS') $bs_total_en_usd += ($m['t'] / $tasa_actual); } $js_moneda[] = ['moneda' => 'USD', 'total_convertido_usd' => $usd_total]; $js_moneda[] = ['moneda' => 'BS', 'total_convertido_usd' => $bs_total_en_usd];
+$js_tipos = []; foreach ($tipo_pago_data as $t) { $js_tipos[] = ['tipo_pago' => $t['n'], 'total_transacciones' => (int)$t['c']]; }
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reportes - Kpizza's</title>
-    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="../../css/admin.css" rel="stylesheet">
     <link href="../css/reportes.css" rel="stylesheet">
+    <link href="../css/reportes_fix.css" rel="stylesheet">
+    <style>
+        /* Estilo simple para la paginación activa en rojo */
+        .pagination .page-link { color: #dc3545; }
+        .pagination .page-item.active .page-link { background-color: #dc3545; border-color: #dc3545; color: white; }
+    </style>
 </head>
 <body>
     <div class="container-fluid">
         <div class="row">
             <?php include '../partials/sidebar.php'; ?>
-
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
                 
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2"><i class="fas fa-chart-bar me-2 text-kpizza"></i>Reportes</h1>
-                    
-                    <form method="GET" class="d-flex gap-2 bg-white p-2 rounded shadow-sm align-items-center flex-wrap">
-                        <div class="input-group input-group-sm" style="width: auto;">
+                    <h1 class="h2"><i class="fas fa-chart-bar me-2 text-danger"></i>Reportes</h1>
+                    <form method="GET" class="d-flex gap-2 bg-white p-2 rounded shadow-sm align-items-center">
+                        <div class="input-group input-group-sm">
                             <span class="input-group-text fw-bold">Desde</span>
-                            <input type="date" name="desde" class="form-control" value="<?php echo $fecha_desde; ?>">
+                            <input type="date" name="desde" class="form-control" value="<?php echo htmlspecialchars($fecha_desde); ?>">
                         </div>
-                        <div class="input-group input-group-sm" style="width: auto;">
+                        <div class="input-group input-group-sm">
                             <span class="input-group-text fw-bold">Hasta</span>
-                            <input type="date" name="hasta" class="form-control" value="<?php echo $fecha_hasta; ?>">
+                            <input type="date" name="hasta" class="form-control" value="<?php echo htmlspecialchars($fecha_hasta); ?>">
                         </div>
-                        
                         <?php if(!empty($busqueda)): ?>
                             <input type="hidden" name="q" value="<?php echo htmlspecialchars($busqueda); ?>">
                         <?php endif; ?>
-
-                        <button type="submit" class="btn btn-sm btn-primary fw-bold">
-                            <i class="fas fa-sync-alt me-1"></i> Filtrar
+                        <button type="submit" class="btn btn-sm btn-danger fw-bold">
+                            <i class="fas fa-filter me-1"></i> Filtrar
                         </button>
                     </form>
                 </div>
@@ -240,112 +257,80 @@ foreach ($tipo_pago_data as $t) $js_tipos[] = ['tipo_pago' => $t['tipo_pago'], '
                     <div class="col-md-3">
                         <div class="stats-card card-1">
                             <div class="stats-icon"><i class="fas fa-shopping-cart"></i></div>
-                            <div class="stats-content"><h3><?php echo number_format($stats_resumen['total_pedidos']); ?></h3><p>Pedidos en Rango</p></div>
+                            <div class="stats-content"><h3><?php echo number_format($stats_resumen['c'] ?? 0); ?></h3><p>Pagos en Rango</p></div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="stats-card card-2">
                             <div class="stats-icon"><i class="fas fa-dollar-sign"></i></div>
-                            <div class="stats-content"><h3>$<?php echo number_format($stats_resumen['total_ventas_usd'], 2); ?></h3><p>Venta Total ($)</p></div>
+                            <div class="stats-content"><h3>$<?php echo number_format($stats_resumen['v'] ?? 0, 2); ?></h3><p>Venta Total ($)</p></div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="stats-card card-3">
                             <div class="stats-icon"><i class="fas fa-money-bill-wave"></i></div>
-                            <div class="stats-content"><h3>Bs. <?php echo number_format($stats_resumen['bs_recibido'], 2); ?></h3><p>Recibido en Bs.</p></div>
+                            <div class="stats-content"><h3>Bs. <?php echo number_format($stats_resumen['b'] ?? 0, 2); ?></h3><p>Recibido en Bs.</p></div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="stats-card card-4">
                             <div class="stats-icon"><i class="fas fa-wallet"></i></div>
-                            <div class="stats-content"><h3>$<?php echo number_format($stats_resumen['usd_recibido'], 2); ?></h3><p>Recibido en Divisa</p></div>
+                            <div class="stats-content"><h3>$<?php echo number_format($stats_resumen['u'] ?? 0, 2); ?></h3><p>Recibido en USD</p></div>
                         </div>
                     </div>
                 </div>
 
-                <div class="report-tabs-container mb-4">
+                <div class="mb-4">
                     <ul class="nav nav-pills" id="reportesTab" role="tablist">
                         <li class="nav-item"><button class="nav-link <?php echo ($tab_activa === 'ventas') ? 'active' : ''; ?>" id="ventas-tab" data-bs-toggle="pill" data-bs-target="#ventas" type="button"><i class="fas fa-chart-line me-1"></i> Ventas</button></li>
                         <li class="nav-item"><button class="nav-link" id="pagos-tab" data-bs-toggle="pill" data-bs-target="#pagos" type="button"><i class="fas fa-money-bill-wave me-1"></i> Pagos</button></li>
                         <li class="nav-item"><button class="nav-link" id="productos-tab" data-bs-toggle="pill" data-bs-target="#productos" type="button"><i class="fas fa-pizza-slice me-1"></i> Productos</button></li>
                         <li class="nav-item"><button class="nav-link" id="servicios-tab" data-bs-toggle="pill" data-bs-target="#servicios" type="button"><i class="fas fa-concierge-bell me-1"></i> Servicios</button></li>
                         <li class="nav-item"><button class="nav-link" id="meseros-tab" data-bs-toggle="pill" data-bs-target="#meseros" type="button"><i class="fas fa-user-tie me-1"></i> Meseros</button></li>
-                        
-                        <li class="nav-item">
-                            <button class="nav-link <?php echo ($tab_activa === 'historial') ? 'active' : ''; ?>" id="historial-tab" data-bs-toggle="pill" data-bs-target="#historial" type="button">
-                                <i class="fas fa-history me-1"></i> Historial de ventas
-                            </button>
-                        </li>
+                        <li class="nav-item"><button class="nav-link <?php echo ($tab_activa === 'historial') ? 'active' : ''; ?>" id="historial-tab" data-bs-toggle="pill" data-bs-target="#historial" type="button"><i class="fas fa-history me-1"></i> Historial de Pagos</button></li>
                     </ul>
                 </div>
 
                 <div class="tab-content" id="reportesTabContent">
-                    
                     <div class="tab-pane fade <?php echo ($tab_activa === 'ventas') ? 'show active' : ''; ?>" id="ventas">
                         <div class="row">
-                            <div class="col-lg-8">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-chart-line me-2 text-primary"></i>Tendencia Diaria</h5></div>
-                                    <canvas id="ventasChart" height="250"></canvas>
-                                </div>
-                            </div>
-                            <div class="col-lg-4">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-calendar-alt me-2 text-success"></i>Resumen Mensual</h5></div>
-                                    <canvas id="ventasMensualesChart" height="250"></canvas>
-                                </div>
-                            </div>
+                            <div class="col-lg-8"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-chart-line me-2 text-primary"></i>Tendencia Diaria de Ventas</h5></div><div class="chart-wrapper"><canvas id="ventasChart"></canvas></div></div></div>
+                            <div class="col-lg-4"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-calendar-alt me-2 text-success"></i>Resumen Mensual</h5></div><div class="chart-wrapper"><canvas id="ventasMensualesChart"></canvas></div></div></div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade" id="pagos">
                         <div class="row">
-                            <div class="col-lg-6">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-chart-pie me-2 text-info"></i>Proporción Moneda (en valor $)</h5></div>
-                                    <canvas id="monedaChart" height="300"></canvas>
-                                </div>
-                            </div>
-                            <div class="col-lg-6">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-credit-card me-2 text-purple"></i>Transacciones por Método</h5></div>
-                                    <canvas id="tipoPagoChart" height="300"></canvas>
-                                </div>
-                            </div>
+                            <div class="col-lg-6"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-chart-pie me-2 text-info"></i>Proporción por Moneda</h5></div><div class="chart-wrapper"><canvas id="monedaChart"></canvas></div></div></div>
+                            <div class="col-lg-6"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-credit-card me-2 text-purple"></i>Métodos de Pago</h5></div><div class="chart-wrapper"><canvas id="tipoPagoChart"></canvas></div></div></div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade" id="productos">
                         <div class="row">
-                            <div class="col-lg-6">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-pizza-slice me-2 text-warning"></i>Top Productos (Cantidad)</h5></div>
-                                    <canvas id="productosChart" height="300"></canvas>
-                                </div>
-                            </div>
-                            <div class="col-lg-6">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-chart-bar me-2 text-info"></i>Top Productos (Ingresos $)</h5></div>
-                                    <canvas id="ingresosProductosChart" height="300"></canvas>
-                                </div>
-                            </div>
+                            <div class="col-lg-6"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-pizza-slice me-2 text-warning"></i>Productos Más Vendidos</h5></div><div class="chart-wrapper"><canvas id="productosChart"></canvas></div></div></div>
+                            <div class="col-lg-6"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-chart-bar me-2 text-info"></i>Ingresos por Producto</h5></div><div class="chart-wrapper"><canvas id="ingresosProductosChart"></canvas></div></div></div>
                         </div>
                         <div class="row mt-4">
                             <div class="col-12">
                                 <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-list me-2"></i>Detalle de Productos</h5></div>
+                                    <div class="chart-header mb-3"><h5><i class="fas fa-list me-2"></i>Detalle de Productos</h5></div>
                                     <div class="table-responsive">
                                         <table class="table table-hover table-sm">
-                                            <thead class="table-light"><tr><th>Producto</th><th>Categoría</th><th>Cant.</th><th>Ingresos</th></tr></thead>
+                                            <thead class="table-light"><tr><th>Producto</th><th>Categoría</th><th>Cantidad</th><th>Ingresos ($)</th></tr></thead>
                                             <tbody>
-                                                <?php foreach ($top_productos as $p): ?>
-                                                <tr>
-                                                    <td><?php echo $p['nombre']; ?></td>
-                                                    <td><?php echo $p['categoria']; ?></td>
-                                                    <td><span class="badge bg-primary"><?php echo $p['total_vendido']; ?></span></td>
-                                                    <td><strong>$<?php echo number_format($p['total_ingresos'], 2); ?></strong></td>
-                                                </tr>
-                                                <?php endforeach; ?>
+                                                <?php if (!empty($top_productos)): ?>
+                                                    <?php foreach ($top_productos as $p): ?>
+                                                    <tr>
+                                                        <td><?php echo htmlspecialchars($p['n']); ?></td>
+                                                        <td><?php echo htmlspecialchars($p['c']); ?></td>
+                                                        <td><span class="badge bg-primary"><?php echo $p['q']; ?></span></td>
+                                                        <td><strong>$<?php echo number_format($p['t'], 2); ?></strong></td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                <?php else: ?>
+                                                    <tr><td colspan="4" class="text-center py-3 text-muted">No hay productos vendidos en este rango</td></tr>
+                                                <?php endif; ?>
                                             </tbody>
                                         </table>
                                     </div>
@@ -353,106 +338,182 @@ foreach ($tipo_pago_data as $t) $js_tipos[] = ['tipo_pago' => $t['tipo_pago'], '
                             </div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade" id="servicios">
                         <div class="row">
+                            <div class="col-lg-6"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-concierge-bell me-2 text-danger"></i>Ventas por Tipo de Servicio</h5></div><div class="chart-wrapper"><canvas id="serviciosChart"></canvas></div></div></div>
                             <div class="col-lg-6">
                                 <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-concierge-bell me-2"></i>Ventas por Servicio</h5></div>
-                                    <canvas id="serviciosChart" height="300"></canvas>
-                                </div>
-                            </div>
-                            <div class="col-lg-6">
-                                <div class="table-responsive chart-container">
-                                    <table class="table table-bordered mt-4">
-                                        <thead class="table-light"><tr><th>Servicio</th><th>Pedidos</th><th>Ventas ($)</th></tr></thead>
-                                        <tbody>
-                                            <?php foreach ($ventas_servicio as $s): ?>
-                                            <tr>
-                                                <td><?php echo $s['tipo_servicio']; ?></td>
-                                                <td><?php echo $s['total_pedidos']; ?></td>
-                                                <td>$<?php echo number_format($s['total_ventas_usd'], 2); ?></td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
+                                    <div class="chart-header mb-3"><h5><i class="fas fa-table me-2 text-success"></i>Detalle por Servicio</h5></div>
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered">
+                                            <thead class="table-light"><tr><th>Servicio</th><th>Pedidos</th><th>Ventas ($)</th></tr></thead>
+                                            <tbody>
+                                                <?php if (!empty($ventas_servicio)): ?>
+                                                    <?php foreach ($ventas_servicio as $s): ?>
+                                                    <tr>
+                                                        <td><?php echo htmlspecialchars($s['t']); ?></td>
+                                                        <td><?php echo $s['c']; ?></td>
+                                                        <td><strong>$<?php echo number_format($s['v'], 2); ?></strong></td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                <?php else: ?>
+                                                    <tr><td colspan="3" class="text-center py-3 text-muted">No hay datos de servicios en este rango</td></tr>
+                                                <?php endif; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade" id="meseros">
                         <div class="row">
-                            <div class="col-lg-12">
-                                <div class="chart-container">
-                                    <div class="chart-header"><h5><i class="fas fa-user-tie me-2"></i>Desempeño Meseros</h5></div>
-                                    <canvas id="meserosChart" height="150"></canvas>
-                                </div>
-                            </div>
+                            <div class="col-lg-12"><div class="chart-container"><div class="chart-header mb-3"><h5><i class="fas fa-user-tie me-2 text-primary"></i>Desempeño de Meseros</h5></div><div class="chart-wrapper"><canvas id="meserosChart"></canvas></div></div></div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade <?php echo ($tab_activa === 'historial') ? 'show active' : ''; ?>" id="historial">
                         <div class="card shadow-sm border-0">
-                            
                             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap">
                                 <div>
-                                    <h5 class="mb-0"><i class="fas fa-list me-2"></i>Detalle de Transacciones</h5>
-                                    <small class="text-muted">Mostrando resultados del <?php echo date('d/m/Y', strtotime($fecha_desde)); ?> al <?php echo date('d/m/Y', strtotime($fecha_hasta)); ?></small>
+                                    <h5 class="mb-0"><i class="fas fa-list me-2 text-danger"></i>Historial de Pagos</h5>
+                                    <small class="text-muted">
+                                        Mostrando pagos del <?php echo date('d/m/Y', strtotime($fecha_desde)); ?> al <?php echo date('d/m/Y', strtotime($fecha_hasta)); ?>
+                                        | Página <?php echo $pagina_historial; ?> de <?php echo $total_paginas; ?>
+                                    </small>
                                 </div>
                                 
-                                <form method="GET" class="d-flex mt-2 mt-md-0">
-                                    <input type="hidden" name="desde" value="<?php echo $fecha_desde; ?>">
-                                    <input type="hidden" name="hasta" value="<?php echo $fecha_hasta; ?>">
+                                <form method="GET" class="d-flex mt-2 mt-md-0" onsubmit="return validarBusqueda(this)">
+                                    <input type="hidden" name="desde" value="<?php echo htmlspecialchars($fecha_desde); ?>">
+                                    <input type="hidden" name="hasta" value="<?php echo htmlspecialchars($fecha_hasta); ?>">
+                                    <input type="hidden" name="tab" value="historial">
                                     <div class="input-group input-group-sm">
-                                        <input type="text" name="q" class="form-control" placeholder="Buscar ID, Ref o Banco..." value="<?php echo htmlspecialchars($busqueda); ?>" style="width: 220px;">
-                                        <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i></button>
+                                        <input type="text" name="q" id="inputBusqueda" class="form-control" 
+                                               placeholder="Buscar por ID, Referencia o Banco..." 
+                                               value="<?php echo htmlspecialchars($busqueda); ?>" 
+                                               style="width: 250px;">
+                                        <button class="btn btn-danger" type="submit">
+                                            <i class="fas fa-search"></i>
+                                        </button>
                                         <?php if(!empty($busqueda)): ?>
-                                            <a href="reportes.php?desde=<?php echo $fecha_desde; ?>&hasta=<?php echo $fecha_hasta; ?>" class="btn btn-secondary" title="Limpiar"><i class="fas fa-times"></i></a>
+                                            <a href="reportes.php?desde=<?php echo urlencode($fecha_desde); ?>&hasta=<?php echo urlencode($fecha_hasta); ?>&tab=historial" 
+                                               class="btn btn-secondary" title="Limpiar búsqueda">
+                                                <i class="fas fa-times"></i>
+                                            </a>
                                         <?php endif; ?>
                                     </div>
                                 </form>
                             </div>
-
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle mb-0">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>ID</th><th>Fecha/Hora</th><th>Mesero</th><th>Tipo</th><th>Métodos de Pago</th><th>Referencias / Bancos</th><th class="text-end">Total ($)</th><th class="text-center">Acción</th>
+                                            <th>ID</th><th>Fecha/Hora Pago</th><th>Mesero</th><th>Tipo</th><th>Método</th><th>Monto</th><th>Tasa</th><th>Ref / Banco</th><th class="text-end">Total Comanda ($)</th><th class="text-center">Acción</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php if (empty($historial_ventas)): ?>
-                                            <tr><td colspan="8" class="text-center py-5 text-muted">No se encontraron registros en este rango.</td></tr>
+                                            <tr>
+                                                <td colspan="10" class="text-center py-5 text-muted">
+                                                    <i class="fas fa-search fa-2x mb-3"></i><br>
+                                                    No se encontraron pagos en este rango de fechas
+                                                </td>
+                                            </tr>
                                         <?php else: ?>
                                             <?php foreach ($historial_ventas as $venta): ?>
-                                                <tr>
-                                                    <td><span class="badge bg-secondary">#<?php echo $venta['id']; ?></span></td>
-                                                    <td><?php echo date('d/m/y H:i', strtotime($venta['fecha_creacion'])); ?></td>
-                                                    <td><?php echo htmlspecialchars($venta['mesero']); ?></td>
-                                                    <td><?php echo ($venta['tipo_servicio'] == 'Mesa') ? '<span class="badge bg-primary">Mesa</span>' : '<span class="badge bg-warning text-dark">Llevar</span>'; ?></td>
-                                                    <td class="small"><?php echo htmlspecialchars($venta['metodos_pago']); ?></td>
-                                                    <td class="small">
-                                                        <?php if($venta['referencias']): ?>
-                                                            <strong>Ref:</strong> <?php echo htmlspecialchars($venta['referencias']); ?><br>
-                                                            <span class="text-muted"><?php echo htmlspecialchars($venta['bancos']); ?></span>
-                                                        <?php else: ?> - <?php endif; ?>
-                                                    </td>
-                                                    <td class="text-end fw-bold text-success">$<?php echo number_format($venta['total'], 2); ?></td>
-                                                    <td class="text-center">
-                                                        <a href="../../caja/generar_factura_pdf.php?id=<?php echo $venta['id']; ?>" target="_blank" class="btn btn-sm btn-outline-danger" title="Reimprimir">
-                                                            <i class="fas fa-file-pdf"></i>
-                                                        </a>
-                                                    </td>
-                                                </tr>
+                                            <tr>
+                                                <td><span class="badge bg-secondary">#<?php echo $venta['id']; ?></span></td>
+                                                <td class="fw-bold">
+                                                    <?php 
+                                                        if (!empty($venta['fecha_pago'])) {
+                                                            $fecha = new DateTime($venta['fecha_pago']);
+                                                            $fecha->setTimezone(new DateTimeZone('America/Caracas'));
+                                                            echo $fecha->format('d/m/Y H:i');
+                                                        } else {
+                                                            echo '<span class="text-muted">Sin fecha</span>';
+                                                        }
+                                                    ?>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($venta['mesero']); ?></td>
+                                                <td>
+                                                    <?php if($venta['tipo_servicio'] == 'Mesa'): ?>
+                                                        <span class="badge bg-primary">Mesa</span>
+                                                    <?php else: ?>
+                                                        <span class="badge bg-warning text-dark">Llevar</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="small fw-bold text-primary"><?php echo htmlspecialchars($venta['metodo_pago'] ?? 'N/A'); ?></td>
+                                                <td class="small">
+                                                    <?php if($venta['moneda_pago'] == 'USD'): ?>
+                                                        <div class="text-primary fw-bold">$<?php echo number_format($venta['monto_total'], 2); ?></div>
+                                                    <?php else: ?>
+                                                        <div class="text-success fw-bold">Bs. <?php echo number_format($venta['monto_total'], 2); ?></div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="small text-center"><?php echo ($venta['tasa_registrada'] > 0) ? number_format($venta['tasa_registrada'], 2) : '-'; ?></td>
+                                                <td class="small">
+                                                    <?php if(!empty($venta['referencia'])): ?>
+                                                        <strong>Ref: <?php echo htmlspecialchars($venta['referencia']); ?></strong>
+                                                        <?php if(!empty($venta['banco_origen'])): ?>
+                                                            <br><span class="text-muted"><?php echo htmlspecialchars($venta['banco_origen']); ?></span>
+                                                        <?php endif; ?>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">-</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="text-end fw-bold text-dark">$<?php echo number_format($venta['total'], 2); ?></td>
+                                                <td class="text-center">
+                                                    <a href="../../caja/generar_factura_pdf.php?id=<?php echo $venta['id']; ?>" target="_blank" class="btn btn-sm btn-outline-danger" title="Reimprimir factura">
+                                                        <i class="fas fa-file-pdf"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            <?php if ($total_paginas > 1): ?>
+                            <div class="card-footer bg-white">
+                                <nav aria-label="Paginación del historial">
+                                    <ul class="pagination pagination-sm justify-content-center mb-0">
+                                        <?php if ($pagina_historial > 1): ?>
+                                            <li class="page-item">
+                                                <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $pagina_historial - 1])); ?>#historial">
+                                                    &laquo; Anterior
+                                                </a>
+                                            </li>
+                                        <?php else: ?>
+                                            <li class="page-item disabled"><span class="page-link">&laquo; Anterior</span></li>
+                                        <?php endif; ?>
+
+                                        <?php for ($i = 1; $i <= $total_paginas; $i++): ?>
+                                            <li class="page-item <?php echo ($pagina_historial == $i) ? 'active' : ''; ?>">
+                                                <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $i])); ?>#historial">
+                                                    <?php echo $i; ?>
+                                                </a>
+                                            </li>
+                                        <?php endfor; ?>
+
+                                        <?php if ($pagina_historial < $total_paginas): ?>
+                                            <li class="page-item">
+                                                <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $pagina_historial + 1])); ?>#historial">
+                                                    Siguiente &raquo;
+                                                </a>
+                                            </li>
+                                        <?php else: ?>
+                                            <li class="page-item disabled"><span class="page-link">Siguiente &raquo;</span></li>
+                                        <?php endif; ?>
+                                    </ul>
+                                </nav>
+                            </div>
+                            <?php endif; ?>
+                            
                         </div>
                     </div>
-
                 </div>
             </main>
         </div>
@@ -460,21 +521,31 @@ foreach ($tipo_pago_data as $t) $js_tipos[] = ['tipo_pago' => $t['tipo_pago'], '
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <script>
-        // Paso de datos PHP a JS
+        // DATOS PARA LAS GRÁFICAS
         window.reportData = {
             ventas: <?php echo json_encode($js_ventas); ?>,
             mensuales: <?php echo json_encode($js_mensuales); ?>,
             servicios: <?php echo json_encode($js_servicios); ?>,
             productos: <?php echo json_encode($js_productos); ?>,
             meseros: <?php echo json_encode($js_meseros); ?>,
-            tipoPago: <?php echo json_encode($tipo_pago_data); ?>,
+            tipoPago: <?php echo json_encode($js_tipos); ?>,
             moneda: <?php echo json_encode($js_moneda); ?>,
             tasaActual: <?php echo $tasa_actual; ?>
         };
+        
+        console.log('Datos cargados:', window.reportData);
+
+        // FUNCIÓN PARA VALIDAR BÚSQUEDA VACÍA
+        function validarBusqueda(form) {
+            const input = document.getElementById('inputBusqueda');
+            if (input.value.trim() === '') {
+                // Si el campo está vacío, no envía el formulario
+                return false;
+            }
+            return true;
+        }
     </script>
-    
-    <script src="../js/reportes.js"></script> 
+    <script src="../js/reportes.js"></script>
 </body>
 </html>

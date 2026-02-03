@@ -5,23 +5,27 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../fpdf186/fpdf.php'; 
 require_once __DIR__ . '/../config/tasa_helper.php';
 
-// CORRECCIÓN: Permitir acceso si es Cajero O Administrador
-// (Antes solo dejaba 'caja', por eso te daba error)
 session_start();
 if (!isset($_SESSION['user']) || ($_SESSION['user']['rol'] !== 'caja' && $_SESSION['user']['rol'] !== 'admin')) {
-    die('Acceso denegado: Se requieren permisos de Caja o Administrador.');
+    die('Acceso denegado.');
 }
 
-// --- VALIDACIÓN DE ENTRADA ---
-if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
-    die('ID de comanda no válido.');
-}
+if (!isset($_GET['id']) || !is_numeric($_GET['id'])) { die('ID inválido.'); }
 $comanda_id = (int)$_GET['id'];
 
-// --- OBTENER TASA DE CAMBIO ---
-$tasa_dolar = obtenerTasaDolarActual($pdo);
+// --- OBTENER TASA HISTÓRICA DEL PAGO (Desde la BD) ---
+$stmt_tasa = $pdo->prepare("SELECT tasa_cambio FROM pago WHERE comanda_id = ? ORDER BY id DESC LIMIT 1");
+$stmt_tasa->execute([$comanda_id]);
+$pago_data = $stmt_tasa->fetch(PDO::FETCH_ASSOC);
 
-// --- OBTENER DATOS DE LA COMANDA ---
+// Si tiene tasa guardada, la usamos. Si no (viejo), usamos la actual.
+if ($pago_data && $pago_data['tasa_cambio'] > 0) {
+    $tasa_aplicada = $pago_data['tasa_cambio'];
+} else {
+    $tasa_aplicada = obtenerTasaDolarActual($pdo);
+}
+
+// --- OBTENER DATOS COMANDA ---
 $stmt_comanda = $pdo->prepare("
     SELECT c.id, c.total, c.fecha_creacion, u.nombre as mesero_nombre, c.tipo_servicio, m.numero as mesa_numero
     FROM comanda c JOIN usuario u ON c.usuario_id = u.id LEFT JOIN mesa m ON c.mesa_id = m.id
@@ -29,10 +33,9 @@ $stmt_comanda = $pdo->prepare("
 ");
 $stmt_comanda->execute([$comanda_id]);
 $comanda = $stmt_comanda->fetch(PDO::FETCH_ASSOC); 
-
 if (!$comanda) { die('Comanda no encontrada.'); }
 
-// --- OBTENER DETALLES DEL PEDIDO ---
+// --- DETALLES ---
 $stmt_detalle = $pdo->prepare("
     SELECT p.nombre, cp.nombre as categoria, dc.tamanio, dc.cantidad, dc.precio_unitario, (dc.cantidad * dc.precio_unitario) as subtotal
     FROM detalle_comanda dc JOIN producto p ON dc.producto_id = p.id JOIN categoria_producto cp ON p.categoria_id = cp.id
@@ -41,7 +44,6 @@ $stmt_detalle = $pdo->prepare("
 $stmt_detalle->execute([$comanda_id]);
 $detalles_db = $stmt_detalle->fetchAll(PDO::FETCH_ASSOC);
 
-// --- AGRUPAR LÓGICA DE PIZZAS ---
 $pizzas_agrupadas = []; $bebidas_agrupadas = []; $pizza_counter = 0;
 foreach ($detalles_db as $detalle) {
     if ($detalle['categoria'] === 'Pizza Base') {
@@ -55,7 +57,6 @@ foreach ($detalles_db as $detalle) {
     }
 }
 
-// --- CLASE PDF ---
 class PDF extends FPDF {
     private $comanda_info;
     function setComandaInfo($info) { $this->comanda_info = $info; }
@@ -83,7 +84,6 @@ class PDF extends FPDF {
     }
 }
 
-// --- GENERAR PDF ---
 $pdf = new PDF('P', 'mm', 'A4'); $pdf->AliasNbPages(); $pdf->setComandaInfo($comanda); $pdf->AddPage();
 $pdf->SetFillColor(230, 230, 230); $pdf->SetFont('Arial','B',11);
 $pdf->Cell(15, 7, 'Cant.', 1, 0, 'C', true); $pdf->Cell(100, 7, 'Descripcion', 1, 0, 'C', true);
@@ -120,12 +120,19 @@ if (!empty($bebidas_agrupadas)) {
 }
 
 $pdf->Ln(5);
+
+// TOTAL USD
 $pdf->SetFont('Arial','B',14); $pdf->Cell(150, 10, 'TOTAL (USD):', 0, 0, 'R');
 $pdf->SetFillColor(255, 255, 204); $pdf->Cell(40, 10, '$'.number_format($comanda['total'], 2), 1, 1, 'R', true);
-$total_bs = convertirDolaresABolivares((float)$comanda['total'], $tasa_dolar);
+
+// CALCULO DE TOTAL BS CON LA TASA HISTÓRICA
+$total_bs = $comanda['total'] * $tasa_aplicada;
+
 $pdf->SetFont('Arial','B',12); $pdf->Cell(150, 10, 'TOTAL (Bs.):', 0, 0, 'R');
 $pdf->SetFillColor(230, 230, 230); $pdf->Cell(40, 10, 'Bs. '.number_format($total_bs, 2), 1, 1, 'R', true);
-$pdf->SetFont('Arial','I',8); $pdf->Cell(190, 5, utf8_decode('Tasa del día: 1 USD = '.number_format($tasa_dolar, 2) . ' BS'), 0, 1, 'R');
+
+// NOTA DE LA TASA
+$pdf->SetFont('Arial','I',8); $pdf->Cell(190, 5, utf8_decode('Tasa de cambio aplicada: '.number_format($tasa_aplicada, 2) . ' BS/$'), 0, 1, 'R');
 
 $pdf->Output('I', 'Recibo_Kpizza_'.$comanda['id'].'.pdf');
 exit;

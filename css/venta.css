@@ -38,14 +38,18 @@
 }
 
 .mesa-disponible {
-    background-color: #f8f9fa;
-    border-color: #ccc;
+    background-color: #d4edda !important;
+    border-color: #28a745 !important;
+    color: #155724 !important;
 }
 
+/* --- CAMBIO AQUÍ --- */
 .mesa-ocupada {
-    background-color: #ffc107;
-    border-color: #d68c00;
-    color: #fff;
+    background-color: #ffc107 !important;
+    border-color: #d68c00 !important;
+    color: #856404 !important;
+    cursor: not-allowed; /* Muestra el icono de prohibido */
+    opacity: 0.8; /* La hace ver ligeramente deshabilitada */
 }
 
 .mesa-en-proceso {
@@ -53,24 +57,24 @@
     border-color: #0a58ca;
     color: #fff;
 }
+/* Fin cambios mesa */
 
 #order-form-section {
   display: none;
 }
 
 body {
-    min-height: 100vh;        /* Ocupa toda la altura de la pantalla */
-    display: flex;            /* Activa flexbox */
-    flex-direction: column;   /* Organiza los elementos en columna */
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .container.my-5 {
-    flex: 1;                  /* Hace que este contenedor crezca y ocupe todo el espacio disponible */
+    flex: 1;
 }
 
-/* Footer siempre abajo */
 footer {
-    margin-top: auto;         /* Empuja el footer hacia abajo automáticamente */
+    margin-top: auto;
 }
 
 /* ========== NOTIFICACIONES EN TIEMPO REAL ========== */
@@ -86,7 +90,6 @@ footer {
     font-weight: 600;
 }
 
-/* Animación para notificaciones */
 @keyframes pulse-notification {
     0% { transform: scale(1); }
     50% { transform: scale(1.05); }
@@ -97,22 +100,8 @@ footer {
     animation: pulse-notification 0.5s ease-in-out;
 }
 
-/* Estilos específicos para notificaciones de pedidos listos */
 .notification-pedido-listo {
     border-left: 4px solid #198754 !important;
-}
-
-/* Estados mejorados para mesas */
-.mesa-disponible {
-    background-color: #d4edda !important;
-    border-color: #28a745 !important;
-    color: #155724 !important;
-}
-
-.mesa-ocupada {
-    background-color: #fff3cd !important;
-    border-color: #ffc107 !important;
-    color: #856404 !important;
 }
 
 .mesa-reservada {
@@ -121,7 +110,6 @@ footer {
     color: #721c24 !important;
 }
 
-/* Mejoras visuales para las opciones de servicio */
 .servicio-option {
     transition: all 0.3s ease;
     border: 2px solid transparent;
@@ -138,7 +126,6 @@ footer {
     background-color: rgba(216, 38, 38, 0.05);
 }
 
-/* Responsive para notificaciones */
 @media (max-width: 768px) {
     .sweetalert-notification {
         min-width: 90% !important;
@@ -150,19 +137,67 @@ footer {
     }
 }
 
-/* Estilos para la sección de totales duales */
 .totales-container {
     border-top: 2px solid #e9ecef;
     padding-top: 1rem;
 }
 
-/* Mejora visual para los montos en bolívares */
 .text-success {
     font-weight: 600;
 }
 
-/* Estilo para la información de tasa */
 .bg-light.rounded {
     background-color: #f8f9fa !important;
     border: 1px solid #dee2e6;
+}
+
+/* Paneles Laterales (Sidebars) */
+.sidebar-custom {
+    position: fixed;
+    top: 0;
+    width: 320px;
+    height: 100%;
+    background: #fff;
+    z-index: 2000;
+    transition: all 0.3s ease;
+}
+.sidebar-right { right: -320px; }
+.sidebar-left { left: -320px; }
+
+/* Cuando se activan */
+.sidebar-custom.active { right: 0; left: auto; }
+.sidebar-left.active { left: 0; right: auto; }
+
+/* Botones flotantes */
+.sidebar-trigger {
+    position: fixed;
+    top: 100px;
+    width: 50px;
+    height: 50px;
+    background: #D82626;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1500;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+#history-btn-container { left: 20px; background: #333; }
+#notif-bell-container { right: 20px; }
+
+/* Estilo de los items */
+.notif-item {
+    border-left: 4px solid #D82626;
+    background: #fff5f5;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+}
+.history-item {
+    border-left: 4px solid #007bff;
+    margin-bottom: 10px;
+    background: #f8f9fa;
 }

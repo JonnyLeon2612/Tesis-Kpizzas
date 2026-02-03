@@ -12,103 +12,101 @@ $tasa_actual = $tasa_dolar ? $tasa_dolar['tasa'] : 1;
 // --- ROL 1: API PARA RECIBIR PEDIDOS (JSON POST) ---
 // Verifica si la solicitud es POST y si el contenido es JSON.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
-  // Define la respuesta como JSON.
-  header('Content-Type: application/json');
-  // Lee el cuerpo JSON de la solicitud.
-  $data = json_decode(file_get_contents('php://input'), true);
+    header('Content-Type: application/json');
+    $data = json_decode(file_get_contents('php://input'), true);
 
-  // Extracción y validación de datos.
-  $mesa_id = isset($data['mesa_id']) ? (int)$data['mesa_id'] : 0;
-  $tipo_servicio = isset($data['tipo_servicio']) ? $data['tipo_servicio'] : 'Mesa';
-  $pedido_detalle = isset($data['pedido']) ? $data['pedido'] : [];
+    $edit_id = isset($data['edit_id']) ? (int)$data['edit_id'] : null; // Detectar si es edición
+    $mesa_id = isset($data['mesa_id']) ? (int)$data['mesa_id'] : 0;
+    $tipo_servicio = isset($data['tipo_servicio']) ? $data['tipo_servicio'] : 'Mesa';
+    $pedido_detalle = isset($data['pedido']) ? $data['pedido'] : [];
 
-  // Validación básica.
-  if (($tipo_servicio === 'Mesa' && empty($mesa_id)) || empty($pedido_detalle)) {
-    echo json_encode(['success' => false, 'error' => 'Complete todos los campos requeridos.']);
+    if (($tipo_servicio === 'Mesa' && empty($mesa_id) && !$edit_id) || empty($pedido_detalle)) {
+        echo json_encode(['success' => false, 'error' => 'Complete todos los campos requeridos.']);
+        exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+        
+        // 1. Calcular el total del pedido
+        $total_pedido = 0.00;
+        foreach ($pedido_detalle as $item) {
+            if ($item['tipo'] === 'Pizza') {
+                $total_pedido += (float)$item['precio_base'];
+                foreach ($item['ingredientes'] as $ingrediente) {
+                    $total_pedido += (float)$ingrediente['precio'];
+                }
+            } elseif (isset($item['tipo']) && $item['tipo'] === 'Bebida') {
+                $total_pedido += (float)$item['precio'];
+            }
+        }
+
+        if ($edit_id) {
+            // --- LÓGICA DE ACTUALIZACIÓN ---
+            // A. Actualizar cabecera de la comanda y quitar el bloqueo de edición
+            $sql_update = "UPDATE comanda SET total = ?, editando = 0, mesa_id = ?, tipo_servicio = ? WHERE id = ?";
+            $stmt_update = $pdo->prepare($sql_update);
+            $stmt_update->execute([
+                $total_pedido, 
+                $tipo_servicio === 'Mesa' ? $mesa_id : NULL, 
+                $tipo_servicio, 
+                $edit_id
+            ]);
+            $comanda_id = $edit_id;
+
+            // B. Limpiar detalles anteriores para insertar los nuevos (evita duplicados/conflictos)
+            $stmt_delete = $pdo->prepare("DELETE FROM detalle_comanda WHERE comanda_id = ?");
+            $stmt_delete->execute([$comanda_id]);
+
+        } else {
+            // --- LÓGICA DE INSERCIÓN NUEVA ---
+            $sql_insert = "INSERT INTO comanda (usuario_id, mesa_id, estado, tipo_servicio, total, editando) VALUES (?, ?, ?, ?, ?, 0)";
+            $stmt_insert = $pdo->prepare($sql_insert);
+            $stmt_insert->execute([
+                $_SESSION['user']['id'],
+                $tipo_servicio === 'Mesa' ? $mesa_id : NULL,
+                'en_preparacion',
+                $tipo_servicio,
+                $total_pedido
+            ]);
+            $comanda_id = $pdo->lastInsertId();
+        }
+
+        // 2. Insertar los detalles de la comanda (común para ambos casos)
+        $sql_detalle = "INSERT INTO detalle_comanda (comanda_id, producto_id, cantidad, tamanio, precio_unitario) VALUES (?, ?, ?, ?, ?)";
+        $stmt_detalle = $pdo->prepare($sql_detalle);
+
+        foreach ($pedido_detalle as $item) {
+            if ($item['tipo'] === 'Pizza') {
+                $stmt_detalle->execute([$comanda_id, $item['id_base'], 1, $item['tamanio'], (float)$item['precio_base']]);
+                foreach ($item['ingredientes'] as $ingrediente) {
+                    $stmt_detalle->execute([$comanda_id, $ingrediente['id'], 1, $item['tamanio'], (float)$ingrediente['precio']]);
+                }
+            } elseif (isset($item['tipo']) && $item['tipo'] === 'Bebida') {
+                $stmt_detalle->execute([$comanda_id, $item['id'], 1, 'N/A', (float)$item['precio']]);
+            }
+        }
+
+        // 3. Gestionar estado de la mesa (solo si es nuevo y en mesa)
+        if (!$edit_id && $tipo_servicio === 'Mesa' && $mesa_id > 0) {
+            $stmt_mesa = $pdo->prepare("UPDATE mesa SET estado = 'ocupada' WHERE id = ?");
+            $stmt_mesa->execute([$mesa_id]);
+        }
+
+        $pdo->commit();
+
+        echo json_encode([
+            'success' => true, 
+            'message' => $edit_id ? 'Pedido actualizado exitosamente' : 'Pedido enviado a cocina',
+            'comanda_id' => $comanda_id
+        ]);
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success' => false, 'error' => 'Error: ' . $e->getMessage()]);
+    }
     exit;
-  }
-
-  try {
-    // --- TRANSACCIÓN DE BASE DE DATOS ---
-    // Iniciar transacción: si algo falla, podemos deshacer todo.
-    $pdo->beginTransaction();
-    
-    // Calcular el total del pedido sumando precios de la data JSON.
-    $total_pedido = 0.00;
-    foreach ($pedido_detalle as $item) {
-      if ($item['tipo'] === 'Pizza') {
-        $total_pedido += (float)$item['precio_base'];
-        foreach ($item['ingredientes'] as $ingrediente) {
-          $total_pedido += (float)$ingrediente['precio'];
-        }
-      } elseif (isset($item['tipo']) && $item['tipo'] === 'Bebida') {
-        $total_pedido += (float)$item['precio'];
-      }
-    }
-
-    // 1. Insertar la comanda principal.
-    $sql = "INSERT INTO comanda (usuario_id, mesa_id, estado, tipo_servicio, total) VALUES (?, ?, ?, ?, ?)";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-      $_SESSION['user']['id'], // ID del mesero logueado
-      $tipo_servicio === 'Mesa' ? $mesa_id : NULL, // NULL si es para llevar
-      'en_preparacion', // Estado inicial
-      $tipo_servicio,
-      $total_pedido
-    ]);
-    // Obtener el ID de la comanda que acabamos de insertar.
-    $comanda_id = $pdo->lastInsertId();
-
-    // 2. Insertar los detalles de la comanda (productos).
-    $sql_detalle = "INSERT INTO detalle_comanda (comanda_id, producto_id, cantidad, tamanio, precio_unitario) VALUES (?, ?, ?, ?, ?)";
-    $stmt_detalle = $pdo->prepare($sql_detalle);
-
-    foreach ($pedido_detalle as $item) {
-      if ($item['tipo'] === 'Pizza') {
-        // Inserta la 'Pizza Base'
-        $stmt_detalle->execute([$comanda_id, $item['id_base'], 1, $item['tamanio'], (float)$item['precio_base']]);
-        // Inserta cada 'Ingrediente' de esa pizza
-        foreach ($item['ingredientes'] as $ingrediente) {
-          $stmt_detalle->execute([$comanda_id, $ingrediente['id'], 1, $item['tamanio'], (float)$ingrediente['precio']]);
-        }
-      } elseif (isset($item['tipo']) && $item['tipo'] === 'Bebida') {
-        // Inserta la 'Bebida'
-        $stmt_detalle->execute([$comanda_id, $item['id'], 1, 'N/A', (float)$item['precio']]);
-      }
-    }
-
-    // 3. Actualizar el estado de la mesa (si aplica).
-    if ($tipo_servicio === 'Mesa' && $mesa_id > 0) {
-      $stmt_mesa = $pdo->prepare("UPDATE mesa SET estado = 'ocupada' WHERE id = ?");
-      $stmt_mesa->execute([$mesa_id]);
-    }
-
-    // Si todo salió bien, confirmar la transacción.
-    $pdo->commit();
-
-    // Enviar respuesta de éxito al JS.
-    $mensaje_exito = $tipo_servicio === 'Mesa'
-      ? '¡Pedido para Mesa enviado a cocina exitosamente!'
-      : '¡Pedido Para Llevar enviado a cocina exitosamente!';
-    
-    // --- MODIFICACIÓN AQUÍ ---
-    // Enviamos la respuesta de éxito junto con el ID de la comanda.
-    echo json_encode([
-        'success' => true, 
-        'message' => $mensaje_exito,
-        'comanda_id' => $comanda_id // ID añadido
-    ]);
-
-  } catch (Exception $e) {
-    // Si algo falló, deshacer la transacción (rollBack).
-    $pdo->rollBack();
-    // Enviar respuesta de error al JS.
-    echo json_encode(['success' => false, 'error' => 'Error al enviar el pedido: ' . $e->getMessage()]);
-  }
-  // Detener el script aquí, ya que era una solicitud de API.
-  exit;
 }
-
 // --- ROL 2: LÓGICA DE CARGA DE PÁGINA (GET) ---
 // Si no fue un POST JSON, el script continúa para cargar el HTML.
 
@@ -153,6 +151,39 @@ $mesas = $stmt_mesas->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 </head>
+<audio id="notificacion-sonido" src="../img/notificacion.mp3" preload="auto"></audio>
+
+<div id="history-btn-container" class="sidebar-trigger" onclick="toggleSidebar('history-sidebar')">
+    <i class="fas fa-history"></i>
+</div>
+
+<div id="notif-bell-container" class="sidebar-trigger" onclick="toggleSidebar('notif-sidebar')">
+    <i class="fas fa-bell"></i>
+    <span id="notif-count" class="badge bg-danger rounded-pill shadow" style="display:none;">0</span>
+</div>
+
+<div id="history-sidebar" class="sidebar-custom sidebar-left shadow">
+    <div class="sidebar-header bg-dark text-white p-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Mis Pedidos Hoy</h5>
+        <button class="btn-close btn-close-white" onclick="toggleSidebar('history-sidebar')"></button>
+    </div>
+    <div id="history-list" class="sidebar-body p-3 overflow-auto" style="max-height: 80vh;">
+        </div>
+</div>
+
+<div id="notif-sidebar" class="sidebar-custom sidebar-right shadow">
+    <div class="sidebar-header bg-dark text-white p-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Notificaciones</h5>
+        <button class="btn-close btn-close-white" onclick="toggleSidebar('notif-sidebar')"></button>
+    </div>
+    <div id="notif-list" class="sidebar-body p-3 overflow-auto" style="max-height: 70vh;">
+        </div>
+    <div class="p-3 border-top bg-light">
+        <button class="btn btn-danger btn-sm w-100" onclick="limpiarNotificaciones()">
+            <i class="fas fa-trash me-1"></i> Borrar Todo
+        </button>
+    </div>
+</div>
 <body class="bg-light">
   <nav class="navbar navbar-expand-lg navbar-dark bg-kpizzas-red">
     <div class="container">

@@ -1,155 +1,111 @@
 <?php
+// --- AUTENTICACIÓN Y CONFIGURACIÓN ---
 require_once __DIR__ . '/../auth/middleware.php';
-require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/db.php'; 
+require_once __DIR__ . '/../fpdf186/fpdf.php'; 
 require_once __DIR__ . '/../config/tasa_helper.php';
-require_role('caja');
 
-// Validar ID de comanda
+session_start();
+if (!isset($_SESSION['user']) || ($_SESSION['user']['rol'] !== 'caja' && $_SESSION['user']['rol'] !== 'admin')) {
+    die('Acceso denegado: Se requieren permisos de Caja o Administrador.');
+}
+
+// --- VALIDACIÓN DE ENTRADA ---
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     die('ID de comanda no válido.');
 }
 $comanda_id = (int)$_GET['id'];
 
-// Obtener Tasa y Comanda
+// --- OBTENER TASA DE CAMBIO ---
 $tasa_dolar = obtenerTasaDolarActual($pdo);
+
+// --- OBTENER DATOS DE LA COMANDA ---
 $stmt_comanda = $pdo->prepare("
-    SELECT c.*, m.numero as mesa_numero
-    FROM comanda c 
-    LEFT JOIN mesa m ON c.mesa_id = m.id 
-    WHERE c.id = ? AND c.estado = 'listo'
+    SELECT c.id, c.total, c.fecha_creacion, u.nombre as mesero_nombre, c.tipo_servicio, m.numero as mesa_numero
+    FROM comanda c JOIN usuario u ON c.usuario_id = u.id LEFT JOIN mesa m ON c.mesa_id = m.id
+    WHERE c.id = ?
 ");
 $stmt_comanda->execute([$comanda_id]);
-$comanda = $stmt_comanda->fetch(PDO::FETCH_ASSOC);
+$comanda = $stmt_comanda->fetch(PDO::FETCH_ASSOC); 
 
-if (!$comanda) {
-    die('Comanda no encontrada, ya fue cobrada o no está lista.');
-}
+if (!$comanda) { die('Comanda no encontrada.'); }
 
 $total_usd = (float)$comanda['total'];
 $total_bs = convertirDolaresABolivares($total_usd, $tasa_dolar);
 
 // --- PROCESAR EL PAGO (POST) ---
+// --- PROCESAR EL PAGO (POST) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tipo_pago_nombre = $_POST['tipo_pago'];
-
     $monto_recibido_usd = !empty($_POST['monto_recibido_usd']) ? (float)$_POST['monto_recibido_usd'] : 0;
     $monto_recibido_bs = !empty($_POST['monto_recibido_bs']) ? (float)$_POST['monto_recibido_bs'] : 0;
-
-    // --- NUEVO: CAPTURAR DATOS BANCARIOS ---
     $referencia = !empty($_POST['referencia']) ? trim($_POST['referencia']) : null;
     $banco_origen = !empty($_POST['banco_origen']) ? $_POST['banco_origen'] : null;
 
     try {
         $total_recibido_convertido_a_usd = $monto_recibido_usd + ($monto_recibido_bs / $tasa_dolar);
 
-        // Validar montos (con margen de error pequeño)
-        if ($total_recibido_convertido_a_usd < ($total_usd - 0.001)) {
+        if ($total_recibido_convertido_a_usd < ($total_usd - 0.01)) {
             throw new Exception("El pago recibido es insuficiente.");
         }
 
-        // --- NUEVO: VALIDAR REFERENCIA OBLIGATORIA ---
-        // Si el método es digital, exigimos la referencia para asegurar la auditoría futura
-        if (in_array($tipo_pago_nombre, ['Pago Móvil', 'Transferencia']) && empty($referencia)) {
-            throw new Exception("El número de referencia es obligatorio para " . $tipo_pago_nombre);
-        }
-
-        $cambio_usd = $total_recibido_convertido_a_usd - $total_usd;
-
         $pdo->beginTransaction();
 
-        // 1. Actualizar Comanda
-        $stmt_update_comanda = $pdo->prepare("UPDATE comanda SET estado = 'cobrado' WHERE id = ?");
-        $stmt_update_comanda->execute([$comanda_id]);
+        // 1. Marcar la comanda como cobrada
+        $stmt_comanda = $pdo->prepare("UPDATE comanda SET estado = 'cobrado' WHERE id = ?");
+        $stmt_comanda->execute([$comanda_id]);
 
-        // 2. Liberar Mesa
-        if ($comanda['tipo_servicio'] === 'Mesa' && $comanda['mesa_id']) {
+        // 2. LIBERAR LA MESA (Esto la pone en verde)
+        // Buscamos si la comanda tiene una mesa asignada
+        $stmt_info = $pdo->prepare("SELECT mesa_id, tipo_servicio FROM comanda WHERE id = ?");
+        $stmt_info->execute([$comanda_id]);
+        $info_comanda = $stmt_info->fetch(PDO::FETCH_ASSOC);
+
+        if ($info_comanda['tipo_servicio'] === 'Mesa' && !empty($info_comanda['mesa_id'])) {
             $stmt_mesa = $pdo->prepare("UPDATE mesa SET estado = 'disponible' WHERE id = ?");
-            $stmt_mesa->execute([$comanda['mesa_id']]);
+            $stmt_mesa->execute([$info_comanda['mesa_id']]);
         }
 
-        // 3. Registrar Pagos en BD
+        // 3. Obtener el ID del tipo de pago
+        $stmt_tp = $pdo->prepare("SELECT id FROM tipo_pago WHERE nombre = ? LIMIT 1");
+        $stmt_tp->execute([$tipo_pago_nombre]);
+        $tipo_pago_id = $stmt_tp->fetchColumn();
 
-        // Gestión de Monedas (Crear si no existen)
-        $moneda_id_usd = $pdo->query("SELECT id FROM moneda WHERE simbolo = '$' LIMIT 1")->fetchColumn();
-        if (!$moneda_id_usd) {
-            $pdo->query("INSERT INTO moneda (nombre, simbolo) VALUES ('Dólar Americano', '$')");
-            $moneda_id_usd = $pdo->lastInsertId();
-        }
-        $moneda_id_bs = $pdo->query("SELECT id FROM moneda WHERE simbolo = 'Bs' LIMIT 1")->fetchColumn();
-        if (!$moneda_id_bs) {
-            $pdo->query("INSERT INTO moneda (nombre, simbolo) VALUES ('Bolívar', 'Bs')");
-            $moneda_id_bs = $pdo->lastInsertId();
-        }
+        // 4. Insertar el registro en la tabla pago
+        $sql_pago = "INSERT INTO pago (comanda_id, tipo_pago_id, monto_total, moneda_pago, fecha_pago, referencia, banco_origen, tasa_cambio) 
+                     VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)";
+        $stmt_pago = $pdo->prepare($sql_pago);
 
-        // Gestión Tipo de Pago
-        $stmt_tipo_pago = $pdo->prepare("SELECT id FROM tipo_pago WHERE nombre = ? LIMIT 1");
-        $stmt_tipo_pago->execute([$tipo_pago_nombre]);
-        $tipo_pago_db = $stmt_tipo_pago->fetch();
-        $tipo_pago_id = $tipo_pago_db ? $tipo_pago_db['id'] : 0;
-        if (!$tipo_pago_db) {
-            $pdo->prepare("INSERT INTO tipo_pago (nombre, moneda_id) VALUES (?, ?)")->execute([$tipo_pago_nombre, $moneda_id_usd]);
-            $tipo_pago_id = $pdo->lastInsertId();
-        }
-
-        // Gestión Tasa
-        $stmt_tasa = $pdo->prepare("SELECT id FROM tasa WHERE moneda_id = ? AND valor = ? LIMIT 1");
-        $stmt_tasa->execute([$moneda_id_usd, $tasa_dolar]);
-        $tasa_db = $stmt_tasa->fetch();
-        $tasa_id = $tasa_db ? $tasa_db['id'] : 0;
-        if (!$tasa_db) {
-            $pdo->prepare("INSERT INTO tasa (moneda_id, valor) VALUES (?, ?)")->execute([$moneda_id_usd, $tasa_dolar]);
-            $tasa_id = $pdo->lastInsertId();
-        }
-
-        // --- INSERTAR PAGO USD ---
         if ($monto_recibido_usd > 0) {
-            $valor_pago_usd = ($tipo_pago_nombre != 'Pago Mixto') ? $total_usd : $monto_recibido_usd;
-
-            // Efectivo USD usualmente no lleva referencia, guardamos NULL
-            $stmt_pago_usd = $pdo->prepare("INSERT INTO pago (comanda_id, tipo_pago_id, monto_total, moneda_pago, fecha_pago, referencia, banco_origen) VALUES (?, ?, ?, 'USD', NOW(), NULL, NULL)");
-            $stmt_pago_usd->execute([$comanda_id, $tipo_pago_id, $valor_pago_usd]);
-            $pago_id_usd = $pdo->lastInsertId();
-
-            $stmt_detalle_usd = $pdo->prepare("INSERT INTO detalle_pago (pago_id, tasa_id, monto) VALUES (?, ?, ?)");
-            $stmt_detalle_usd->execute([$pago_id_usd, $tasa_id, $monto_recibido_usd]);
+            $stmt_pago->execute([$comanda_id, $tipo_pago_id, $monto_recibido_usd, 'USD', null, null, $tasa_dolar]);
         }
-
-        // --- INSERTAR PAGO BS (CON REFERENCIA) ---
         if ($monto_recibido_bs > 0) {
-            $valor_pago_bs = ($tipo_pago_nombre != 'Pago Mixto') ? $total_bs : $monto_recibido_bs;
-
-            // AQUÍ GUARDAMOS LOS DATOS NUEVOS EN LA BASE DE DATOS
-            $stmt_pago_bs = $pdo->prepare("INSERT INTO pago (comanda_id, tipo_pago_id, monto_total, moneda_pago, fecha_pago, referencia, banco_origen) VALUES (?, ?, ?, 'BS', NOW(), ?, ?)");
-            $stmt_pago_bs->execute([$comanda_id, $tipo_pago_id, $valor_pago_bs, $referencia, $banco_origen]);
-            $pago_id_bs = $pdo->lastInsertId();
-
-            $stmt_detalle_bs = $pdo->prepare("INSERT INTO detalle_pago (pago_id, tasa_id, monto) VALUES (?, ?, ?)");
-            $stmt_detalle_bs->execute([$pago_id_bs, $tasa_id, $monto_recibido_bs]);
+            $stmt_pago->execute([$comanda_id, $tipo_pago_id, $monto_recibido_bs, 'BS', $referencia, $banco_origen, $tasa_dolar]);
         }
 
         $pdo->commit();
-        header("Location: caja.php?cobro_exito=true&comanda_id=$comanda_id&cambio_usd=$cambio_usd");
+        header("Location: caja.php?cobro_exito=true");
         exit;
+
     } catch (Exception $e) {
-        $pdo->rollBack();
-        $error_msg = "Error al procesar el pago: " . $e->getMessage();
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        $error_msg = $e->getMessage();
+        header("Location: caja.php?cobro_exito=false&error_msg=" . urlencode($error_msg));
+        exit;
     }
 }
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cobrar Pedido #<?php echo $comanda_id; ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <link href="../css/caja.css" rel="stylesheet">
 </head>
-
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-kpizzas-red">
         <div class="container">
@@ -170,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0 text-muted">Total a Pagar:</h5>
                                 <div class="text-end">
-                                    <div class="h3 text-primary fw-bold mb-0" id="total-usd-display">$<?php echo number_format($total_usd, 2); ?></div>
+                                    <div class="h3 text-primary fw-bold mb-0">$<?php echo number_format($total_usd, 2); ?></div>
                                     <div class="h4 text-success fw-normal mb-0">Bs. <?php echo number_format($total_bs, 2); ?></div>
                                 </div>
                             </div>
@@ -184,15 +140,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="mb-3">
                                 <label class="form-label fw-bold"><i class="fas fa-credit-card me-2 text-muted"></i>Método de Pago</label>
                                 <select class="form-select form-select-lg" name="tipo_pago" id="tipo_pago_select" required>
-                                    <option value="Efectivo">Efectivo (Solo Dólares)</option>
                                     <option value="Pago Móvil">Pago Móvil</option>
+                                    <option value="Efectivo">Efectivo (Dólares)</option>
                                     <option value="Transferencia">Transferencia</option>
                                     <option value="Tarjeta">Tarjeta (Punto de Venta)</option>
                                     <option value="Pago Mixto">Pago Mixto (Ambas monedas)</option>
                                 </select>
                             </div>
 
-                            <div id="datos-bancarios" class="p-3 mb-3 border rounded bg-light" style="display: none;">
+                            <div id="datos-bancarios" class="p-3 mb-3 border rounded bg-light">
                                 <h6 class="text-primary fw-bold mb-3"><i class="fas fa-university me-1"></i>Datos de la Transacción</h6>
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
@@ -200,83 +156,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <select class="form-select" name="banco_origen" id="banco_origen">
                                             <option value="">Seleccione Banco...</option>
                                             <option value="Banco de Venezuela">Banco de Venezuela</option>
-                                            <option value="Banco Bicentenario">Banco Bicentenario</option>
-                                            <option value="Banco del Tesoro">Banco del Tesoro</option>
-
                                             <option value="Banesco">Banesco</option>
                                             <option value="Mercantil">Mercantil</option>
                                             <option value="Provincial">Provincial</option>
-                                            <option value="Bancamiga">Bancamiga</option>
-                                            <option value="BNC">BNC (Nacional de Crédito)</option>
-
+                                            <option value="BNC">BNC</option>
                                             <option value="Bancaribe">Bancaribe</option>
-                                            <option value="Banco Exterior">Banco Exterior</option>
-                                            <option value="Banco Plaza">Banco Plaza</option>
-                                            <option value="Banplus">Banplus</option>
-                                            <option value="Banco Activo">Banco Activo</option>
-                                            <option value="BFC">BFC (Fondo Común)</option>
-                                            <option value="100% Banco">100% Banco</option>
-                                            <option value="Banco Caroní">Banco Caroní</option>
-                                            <option value="Venezolano de Crédito">Venezolano de Crédito</option>
-                                            <option value="Sofitasa">Sofitasa</option>
-                                            <option value="Bancrecer">Bancrecer</option>
-                                            <option value="Mi Banco">Mi Banco</option>
-                                            <option value="Bancor">Bancor</option>
-
                                             <option value="Otro">Otro</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label class="form-label small fw-bold">Nro. Referencia (Últimos 4 dígitos)</label>
-                                        <input type="text" class="form-control" name="referencia" id="referencia" placeholder="Ej: 1234" maxlength="15">
+                                        <label class="form-label small fw-bold">Ref. (Últimos 4 dígitos)</label>
+                                        <input type="text" class="form-control" name="referencia" id="referencia" placeholder="Ej: 1234" maxlength="4">
+                                        <div class="invalid-feedback">Debe tener 4 dígitos numéricos.</div>
                                     </div>
                                 </div>
                             </div>
 
                             <div>
-                                <div class="mb-3" id="pago-usd-fields">
-                                    <label for="monto_recibido_usd" class="form-label fw-bold"><i class="fas fa-dollar-sign me-2 text-primary"></i>Monto Recibido (USD)</label>
-                                    <div class="input-group input-group-lg">
-                                        <span class="input-group-text">$</span>
-                                        <input type="number" class="form-control" id="monto_recibido_usd" name="monto_recibido_usd" step="0.01" min="0">
-                                    </div>
+                                <div class="mb-3" id="pago-usd-fields" style="display:none;">
+                                    <label class="form-label fw-bold text-primary">Monto en Dólares ($)</label>
+                                    <input type="number" class="form-control form-control-lg" id="monto_recibido_usd" name="monto_recibido_usd" step="0.01" min="0" placeholder="0.00">
                                 </div>
 
                                 <div class="mb-3" id="pago-bs-fields">
-                                    <label for="monto_recibido_bs" class="form-label fw-bold"><i class="fas fa-piggy-bank me-2 text-success"></i>Monto Recibido (BS)</label>
-                                    <div class="input-group input-group-lg">
-                                        <span class="input-group-text">Bs.</span>
-                                        <input type="number" class="form-control" id="monto_recibido_bs" name="monto_recibido_bs" step="0.01" min="0">
-                                    </div>
+                                    <label class="form-label fw-bold text-success">Monto en Bolívares (Bs.)</label>
+                                    <input type="number" class="form-control form-control-lg" id="monto_recibido_bs" name="monto_recibido_bs" step="0.01" min="0" placeholder="0.00">
                                 </div>
                             </div>
 
                             <div class="alert alert-info mt-3">
                                 <div class="d-flex justify-content-between">
-                                    <span>Total:</span>
-                                    <strong id="resumen-recibido">$0.00</strong>
-                                </div>
-                                <div class="d-flex justify-content-between">
                                     <span>Faltante por Pagar:</span>
                                     <strong id="resumen-faltante" class="text-danger">$<?php echo number_format($total_usd, 2); ?></strong>
                                 </div>
-                                <div class="text-end">
-                                    <small id="resumen-faltante-bs" class="text-danger fw-bold"></small>
-                                </div>
-
-                                <hr class="my-2">
+                                <div class="text-end"><small id="resumen-faltante-bs" class="text-danger fw-bold"></small></div>
+                                <hr>
                                 <div class="d-flex justify-content-between h5 mb-0">
-                                    <span>Cambio a devolver (en USD):</span>
+                                    <span>Cambio (USD):</span>
                                     <strong id="resumen-cambio" class="text-success">$0.00</strong>
                                 </div>
-                                <small id="resumen-cambio-bs" class="text-muted d-block text-end"></small>
                             </div>
 
                             <div class="d-grid gap-2 mt-4">
-                                <button type="submit" id="btn-confirmar-pago" class="btn btn-success btn-lg fw-bold" disabled>
+                                <button type="submit" id="btn-confirmar-pago" class="btn btn-secondary btn-lg fw-bold" disabled>
                                     <i class="fas fa-check-circle me-2"></i>Confirmar Pago
                                 </button>
-                                <a href="caja.php" class="btn btn-secondary">Cancelar</a>
+                                <a href="caja.php" class="btn btn-outline-secondary">Cancelar</a>
                             </div>
                         </form>
                     </div>
@@ -289,172 +214,189 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 
     <script>
-        const TASA_DOLAR = <?php echo $tasa_dolar; ?>;
+        // Constantes desde PHP
+        const TASA = <?php echo $tasa_dolar; ?>;
         const TOTAL_USD = <?php echo $total_usd; ?>;
         const TOTAL_BS = <?php echo $total_bs; ?>;
 
         document.addEventListener('DOMContentLoaded', function() {
-            const tipoPagoSelect = document.getElementById('tipo_pago_select');
-            const usdFields = document.getElementById('pago-usd-fields');
-            const bsFields = document.getElementById('pago-bs-fields');
-
-            // Elementos NUEVOS para Bancos
-            const datosBancarios = document.getElementById('datos-bancarios');
+            // Elementos del DOM
+            const selectMetodo = document.getElementById('tipo_pago_select');
+            const divBancos = document.getElementById('datos-bancarios');
+            const divUsd = document.getElementById('pago-usd-fields');
+            const divBs = document.getElementById('pago-bs-fields');
+            
+            const inputUsd = document.getElementById('monto_recibido_usd');
+            const inputBs = document.getElementById('monto_recibido_bs');
+            const inputRef = document.getElementById('referencia');
             const inputBanco = document.getElementById('banco_origen');
-            const inputReferencia = document.getElementById('referencia');
+            const btnCobrar = document.getElementById('btn-confirmar-pago');
 
-            const montoUsdInput = document.getElementById('monto_recibido_usd');
-            const montoBsInput = document.getElementById('monto_recibido_bs');
-            const btnConfirmar = document.getElementById('btn-confirmar-pago');
+            const lblFaltante = document.getElementById('resumen-faltante');
+            const lblFaltanteBs = document.getElementById('resumen-faltante-bs');
+            const lblCambio = document.getElementById('resumen-cambio');
 
-            const resumenRecibido = document.getElementById('resumen-recibido');
-            const resumenFaltante = document.getElementById('resumen-faltante');
-            const resumenFaltanteBs = document.getElementById('resumen-faltante-bs');
-            const resumenCambio = document.getElementById('resumen-cambio');
-            const resumenCambioBs = document.getElementById('resumen-cambio-bs');
+            // 1. REGLA: Referencia solo números y max 4 dígitos
+            if (inputRef) {
+                inputRef.addEventListener('input', function() {
+                    this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4);
+                    validarFormulario();
+                });
+            }
 
-            function manejarVisibilidadCampos() {
-                const tipoPago = tipoPagoSelect.value;
-                montoUsdInput.value = '';
-                montoBsInput.value = '';
+            // 2. CAMBIO DE MÉTODO DE PAGO
+            if (selectMetodo) {
+                selectMetodo.addEventListener('change', function() {
+                    const metodo = this.value;
+                    
+                    // Limpiar valores
+                    if(inputUsd) inputUsd.value = '';
+                    if(inputBs) inputBs.value = '';
+                    if(inputRef) inputRef.value = '';
+                    if(inputBanco) inputBanco.value = '';
 
-                // Resetear visibilidad general
-                usdFields.style.display = 'none';
-                bsFields.style.display = 'none';
+                    // Configuración inicial de visibilidad
+                    if(divUsd) divUsd.style.display = 'none';
+                    if(divBs) divBs.style.display = 'none';
+                    if(divBancos) divBancos.style.display = 'none';
 
-                // Resetear visibilidad bancaria
-                datosBancarios.style.display = 'none';
-                inputBanco.required = false;
-                inputReferencia.required = false;
+                    if (metodo === 'Efectivo') {
+                        if(divUsd) divUsd.style.display = 'block';
+                        if(inputUsd) inputUsd.value = TOTAL_USD.toFixed(2); // Autollenar
+                    } 
+                    else if (metodo === 'Pago Móvil' || metodo === 'Transferencia') {
+                        if(divBs) divBs.style.display = 'block';
+                        if(divBancos) divBancos.style.display = 'block'; // Mostrar bancos
+                        if(inputBs) inputBs.value = TOTAL_BS.toFixed(2); // Autollenar
+                    } 
+                    else if (metodo === 'Tarjeta') {
+                        if(divBs) divBs.style.display = 'block';
+                        if(divBancos) divBancos.style.display = 'none'; // Tarjeta no pide banco origen visualmente aqui
+                        if(inputBs) inputBs.value = TOTAL_BS.toFixed(2);
+                    } 
+                    else if (metodo === 'Pago Mixto') {
+                        if(divUsd) divUsd.style.display = 'block';
+                        if(divBs) divBs.style.display = 'block';
+                        if(divBancos) divBancos.style.display = 'block'; // Opcional referencia
+                    }
 
-                switch (tipoPago) {
-                    case 'Efectivo':
-                        usdFields.style.display = 'block';
-                        montoUsdInput.value = TOTAL_USD.toFixed(2);
-                        break;
+                    validarFormulario();
+                    calcularTotales();
+                });
+            }
 
-                    case 'Pago Móvil':
-                    case 'Transferencia':
-                        bsFields.style.display = 'block';
-                        montoBsInput.value = TOTAL_BS.toFixed(2);
+            // 3. AUTOCOMPLETADO MIXTO (La magia)
+            if (inputUsd) {
+                inputUsd.addEventListener('input', function() {
+                    if (selectMetodo.value === 'Pago Mixto') {
+                        const valUsd = parseFloat(this.value) || 0;
+                        const restanteUsd = TOTAL_USD - valUsd;
+                        if (restanteUsd > 0) {
+                            const restanteBs = restanteUsd * TASA;
+                            if(inputBs) inputBs.value = restanteBs.toFixed(2);
+                        } else {
+                            if(inputBs) inputBs.value = 0;
+                        }
+                    }
+                    calcularTotales();
+                });
+            }
 
-                        // ACTIVAR CAMPOS BANCARIOS (Obligatorios)
-                        datosBancarios.style.display = 'block';
-                        inputBanco.required = true;
-                        inputReferencia.required = true;
-                        break;
-
-                    case 'Tarjeta':
-                        bsFields.style.display = 'block';
-                        montoBsInput.value = TOTAL_BS.toFixed(2);
+            if (inputBs) {
+                inputBs.addEventListener('input', function() {
+                    if (selectMetodo.value === 'Pago Mixto') {
+                        const valBs = parseFloat(this.value) || 0;
+                        const valBsEnUsd = valBs / TASA;
+                        const restanteUsd = TOTAL_USD - valBsEnUsd;
                         
-                        datosBancarios.style.display = 'none'; 
-                        inputBanco.required = false;
-                        inputReferencia.required = false;
-                        break;
-
-                    case 'Pago Mixto':
-                        usdFields.style.display = 'block';
-                        bsFields.style.display = 'block';
-                        // Mostrar campos bancarios (Opcionales, por si una parte es transferencia)
-                        datosBancarios.style.display = 'block';
-                        break;
-                }
-                calcularTotales();
+                        if (restanteUsd > 0) {
+                            if(inputUsd) inputUsd.value = restanteUsd.toFixed(2);
+                        } else {
+                            if(inputUsd) inputUsd.value = 0;
+                        }
+                    }
+                    calcularTotales();
+                });
             }
 
+            // 4. CÁLCULO DE TOTALES Y VALIDACIÓN
             function calcularTotales() {
-                const montoUsd = parseFloat(montoUsdInput.value) || 0;
-                const montoBs = parseFloat(montoBsInput.value) || 0;
-                const montoBsEnUsd = montoBs / TASA_DOLAR;
-                const totalRecibidoUsd = montoUsd + montoBsEnUsd;
+                const usd = inputUsd ? (parseFloat(inputUsd.value) || 0) : 0;
+                const bs = inputBs ? (parseFloat(inputBs.value) || 0) : 0;
+                const totalPagadoUsd = usd + (bs / TASA);
+                
+                let faltante = TOTAL_USD - totalPagadoUsd;
+                let cambio = 0;
 
-                let faltanteUsd = TOTAL_USD - totalRecibidoUsd;
-                let cambioUsd = 0;
-                const epsilon = 0.001;
-
-                if (faltanteUsd < epsilon) {
-                    cambioUsd = -faltanteUsd;
-                    faltanteUsd = 0;
+                // Margen de error pequeño por decimales
+                if (faltante < 0.01) {
+                    cambio = Math.abs(faltante);
+                    faltante = 0;
                 }
 
-                resumenRecibido.textContent = `$${totalRecibidoUsd.toFixed(2)}`;
-                resumenFaltante.textContent = `$${faltanteUsd.toFixed(2)}`;
-                resumenCambio.textContent = `$${cambioUsd.toFixed(2)}`;
+                if(lblFaltante) lblFaltante.textContent = `$${faltante.toFixed(2)}`;
+                if(lblCambio) lblCambio.textContent = `$${cambio.toFixed(2)}`;
 
-                if (faltanteUsd > 0) {
-                    const faltanteBs = faltanteUsd * TASA_DOLAR;
-                    resumenFaltanteBs.textContent = `(Bs. ${faltanteBs.toFixed(2)})`;
+                if (faltante > 0) {
+                    if(lblFaltanteBs) lblFaltanteBs.textContent = `(Bs. ${(faltante * TASA).toFixed(2)})`;
+                    if(lblFaltante) lblFaltante.className = 'text-danger fw-bold';
                 } else {
-                    resumenFaltanteBs.textContent = '';
+                    if(lblFaltanteBs) lblFaltanteBs.textContent = '¡Completo!';
+                    if(lblFaltante) lblFaltante.className = 'text-success fw-bold';
                 }
 
-                if (cambioUsd > 0) {
-                    resumenCambioBs.textContent = `(Equivale a Bs. ${(cambioUsd * TASA_DOLAR).toFixed(2)})`;
-                } else {
-                    resumenCambioBs.textContent = '';
+                validarFormulario(faltante);
+            }
+
+            function validarFormulario(faltante = 999) {
+                const metodo = selectMetodo ? selectMetodo.value : '';
+                let valido = true;
+
+                // A. Validar Referencia (Solo si es Pago Móvil o Transferencia)
+                if (metodo === 'Pago Móvil' || metodo === 'Transferencia') {
+                    if (inputRef && inputRef.value.length < 4) {
+                        valido = false; // Requiere 4 dígitos
+                        if (inputRef.classList) inputRef.classList.add('is-invalid');
+                    } else if (inputRef) {
+                        if (inputRef.classList) inputRef.classList.remove('is-invalid');
+                    }
+                    if (inputBanco && inputBanco.value === "") valido = false;
+                } 
+                // B. En Mixto la referencia es opcional según tu regla ("menos en el pago mixto")
+                else if (metodo === 'Pago Mixto') {
+                    // No bloqueamos por referencia, pero si escriben algo debe ser números
+                    if(inputRef && inputRef.value.length > 0 && inputRef.value.length < 4) {
+                         // Opcional: si escribe, que sean 4. Si lo dejas vacío, pasa.
+                    }
                 }
 
-                if (faltanteUsd < epsilon) {
-                    btnConfirmar.disabled = false;
-                    resumenFaltante.classList.remove('text-danger');
-                    resumenFaltante.classList.add('text-success');
-                } else {
-                    btnConfirmar.disabled = true;
-                    resumenFaltante.classList.add('text-danger');
-                    resumenFaltante.classList.remove('text-success');
+                // C. Validar Montos Completos
+                const usd = inputUsd ? (parseFloat(inputUsd.value) || 0) : 0;
+                const bs = inputBs ? (parseFloat(inputBs.value) || 0) : 0;
+                const totalPagado = usd + (bs / TASA);
+                
+                if (totalPagado < (TOTAL_USD - 0.01)) {
+                    valido = false;
+                }
+
+                // Activar/Desactivar Botón
+                if (btnCobrar) {
+                    btnCobrar.disabled = !valido;
+                    if (valido) {
+                        btnCobrar.classList.remove('btn-secondary');
+                        btnCobrar.classList.add('btn-success');
+                    } else {
+                        btnCobrar.classList.add('btn-secondary');
+                        btnCobrar.classList.remove('btn-success');
+                    }
                 }
             }
 
-            tipoPagoSelect.addEventListener('change', manejarVisibilidadCampos);
-            montoUsdInput.addEventListener('input', calcularTotales);
-            montoBsInput.addEventListener('input', calcularTotales);
-
-            const form = document.getElementById('form-cobro');
-            form.addEventListener('submit', function(event) {
-                event.preventDefault();
-                const montoUsd = parseFloat(montoUsdInput.value) || 0;
-                const montoBs = parseFloat(montoBsInput.value) || 0;
-                const cambio = parseFloat(resumenCambio.textContent.replace('$', ''));
-
-                let html = `Vas a registrar un pago de:<br>`;
-                if (montoUsd > 0) html += `<b class="h5 d-block">$${montoUsd.toFixed(2)}</b>`;
-                if (montoBs > 0) html += `<b class="h5 d-block">Bs. ${montoBs.toFixed(2)}</b>`;
-
-                // Mostrar referencia en la alerta de confirmación
-                const ref = document.getElementById('referencia').value;
-                if (ref) {
-                    html += `<small class="text-muted d-block mt-2">Ref: ${ref}</small>`;
-                }
-
-                if (cambio > 0) html += `<hr>El cambio a devolver es: <b class="h5 text-success d-block">$${cambio.toFixed(2)}</b>`;
-
-                Swal.fire({
-                    title: '¿Confirmar Cobro?',
-                    html: html,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonColor: '#28a745',
-                    cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'Sí, cobrar',
-                    cancelButtonText: 'Cancelar'
-                }).then((result) => {
-                    if (result.isConfirmed) form.submit();
-                });
-            });
-
-            <?php if (isset($error_msg)): ?>
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error al Procesar',
-                    text: <?php echo json_encode($error_msg); ?>,
-                    confirmButtonColor: '#d33'
-                });
-            <?php endif; ?>
-
-            manejarVisibilidadCampos();
+            // Inicializar
+            if (selectMetodo) {
+                selectMetodo.dispatchEvent(new Event('change'));
+            }
         });
     </script>
 </body>
-
 </html>

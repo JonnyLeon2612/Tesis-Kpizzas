@@ -14,7 +14,6 @@ class ProductoController {
 
     public function crearProducto($datos) {
         try {
-            // (Tu código de 'crearProducto' no necesita cambios)
             $categoria_id = $datos['categoria_id'];
             $nombre = trim($datos['nombre']);
             $descripcion = trim($datos['descripcion']);
@@ -48,7 +47,6 @@ class ProductoController {
 
     public function actualizarProducto($datos) {
         try {
-            // (Tu código de 'actualizarProducto' no necesita cambios)
             $id = $datos['id'];
             $categoria_id = $datos['categoria_id'];
             $nombre = trim($datos['nombre']);
@@ -76,7 +74,6 @@ class ProductoController {
 
     public function eliminarProducto($id) {
         try {
-            // (Tu código de 'eliminarProducto' no necesita cambios)
             $stmt = $this->pdo->prepare("DELETE FROM producto WHERE id = ?");
             $stmt->execute([$id]);
             $this->mensaje = "Producto eliminado exitosamente";
@@ -87,7 +84,6 @@ class ProductoController {
         }
     }
 
-    // --- CAMBIO: 'obtenerProductos' ahora es 'obtenerProductosPaginados' ---
     public function obtenerProductosPaginados($busqueda, $offset, $limit) {
         $sql_busqueda = "WHERE (p.nombre LIKE ? OR cp.nombre LIKE ?)";
         $params = ["%{$busqueda}%", "%{$busqueda}%", $limit, $offset];
@@ -104,7 +100,6 @@ class ProductoController {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // --- NUEVA FUNCIÓN ---
     public function contarProductos($busqueda) {
         $sql_busqueda = "WHERE (p.nombre LIKE ? OR cp.nombre LIKE ?)";
         $params = ["%{$busqueda}%", "%{$busqueda}%"];
@@ -120,14 +115,12 @@ class ProductoController {
     }
 
     public function obtenerProducto($id) {
-        // (Tu código de 'obtenerProducto' no necesita cambios)
         $stmt = $this->pdo->prepare("SELECT * FROM producto WHERE id = ?");
         $stmt->execute([$id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     public function obtenerCategorias() {
-        // (Tu código de 'obtenerCategorias' no necesita cambios)
         $stmt = $this->pdo->query("SELECT * FROM categoria_producto ORDER BY nombre");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -164,12 +157,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $controller->actualizarProducto($_POST);
     }
     // Redirigir preservando filtros y paginación
-    header('Location: productos.php?' . $query_string);
+    header('Location: productos.php?' . $query_string . '#lista-productos');
     exit;
 } elseif (isset($_GET['eliminar'])) {
     $controller->eliminarProducto($_GET['eliminar']);
     // Redirigir preservando filtros y paginación
-    header('Location: productos.php?' . $query_string);
+    header('Location: productos.php?' . $query_string . '#lista-productos');
     exit;
 }
 
@@ -199,10 +192,8 @@ $error = $controller->getError();
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
             <?php include '../partials/sidebar.php'; ?>
 
-            <!-- Main Content -->
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                     <h1 class="h2">
@@ -215,8 +206,6 @@ $error = $controller->getError();
                     </div>
                 </div>
 
-                <!-- Mensajes -->
-                <!-- (Tu HTML de mensajes no cambia) -->
                 <?php if ($mensaje): ?>
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         <i class="fas fa-check-circle me-2"></i> <?php echo $mensaje; ?>
@@ -232,7 +221,6 @@ $error = $controller->getError();
                 <?php endif; ?>
 
 
-                <!-- Formulario para crear/editar producto -->
                 <div class="card mb-4 shadow-sm">
                     <div class="card-header bg-red-kpizza text-white">
                         <h5 class="mb-0">
@@ -281,7 +269,6 @@ $error = $controller->getError();
                                 </div>
                             </div>
 
-                            <!-- --- NUEVO: Contenedor para precios (para JS) --- -->
                             <div id="campos-precios-pizza" class="row">
                                 <div class="col-md-4 mb-3">
                                     <label for="precio_pequena" class="form-label">Precio Pequeña ($)</label>
@@ -320,7 +307,6 @@ $error = $controller->getError();
                                     <button type="submit" name="actualizar_producto" class="btn btn-success">
                                         <i class="fas fa-save me-1"></i> Actualizar Producto
                                     </button>
-                                    <!-- CAMBIO: El link de cancelar ahora preserva el estado -->
                                     <a href="productos.php?<?php echo $query_string_http; ?>" class="btn btn-secondary">
                                         <i class="fas fa-times me-1"></i> Cancelar
                                     </a>
@@ -337,10 +323,9 @@ $error = $controller->getError();
                     </div>
                 </div>
 
-                <!-- --- NUEVO: Formulario de Búsqueda --- -->
                 <div class="card mb-4 shadow-sm">
                     <div class="card-body">
-                        <form method="GET" action="productos.php">
+                        <form method="GET" action="productos.php#lista-productos">
                             <div class="row g-3">
                                 <div class="col-md-10">
                                     <label for="buscar" class="form-label">Buscar Producto o Categoría</label>
@@ -358,8 +343,7 @@ $error = $controller->getError();
                     </div>
                 </div>
 
-                <!-- Tabla de productos -->
-                <div class="card shadow-sm">
+                <div class="card shadow-sm" id="lista-productos">
                     <div class="card-header bg-red-kpizza text-white">
                         <h5 class="mb-0"><i class="fas fa-list me-2"></i> Lista de Productos</h5>
                     </div>
@@ -401,7 +385,6 @@ $error = $controller->getError();
                                                 </td>
                                                 <td>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <!-- CAMBIO: Links de acción preservan estado -->
                                                         <a href="?editar=<?php echo $producto['id']; ?>&<?php echo $query_string_http; ?>" class="btn btn-warning" title="Editar">
                                                             <i class="fas fa-edit"></i>
                                                         </a>
@@ -431,25 +414,21 @@ $error = $controller->getError();
                     </div>
                 </div>
 
-                <!-- --- NUEVO: Paginación --- -->
                 <?php if ($total_paginas > 1): ?>
                     <nav aria-label="Navegación de productos" class="mt-4 d-flex justify-content-center">
                         <ul class="pagination">
-                            <!-- Botón Anterior -->
                             <li class="page-item <?php echo ($pagina_actual <= 1) ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?pagina=<?php echo $pagina_actual - 1; ?>&buscar=<?php echo urlencode($busqueda); ?>">Anterior</a>
+                                <a class="page-link" href="?pagina=<?php echo $pagina_actual - 1; ?>&buscar=<?php echo urlencode($busqueda); ?>#lista-productos">Anterior</a>
                             </li>
 
-                            <!-- Números de página -->
                             <?php for ($i = 1; $i <= $total_paginas; $i++): ?>
                                 <li class="page-item <?php echo ($i === $pagina_actual) ? 'active' : ''; ?>">
-                                    <a class="page-link" href="?pagina=<?php echo $i; ?>&buscar=<?php echo urlencode($busqueda); ?>"><?php echo $i; ?></a>
+                                    <a class="page-link" href="?pagina=<?php echo $i; ?>&buscar=<?php echo urlencode($busqueda); ?>#lista-productos"><?php echo $i; ?></a>
                                 </li>
                             <?php endfor; ?>
 
-                            <!-- Botón Siguiente -->
                             <li class="page-item <?php echo ($pagina_actual >= $total_paginas) ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?pagina=<?php echo $pagina_actual + 1; ?>&buscar=<?php echo urlencode($busqueda); ?>">Siguiente</a>
+                                <a class="page-link" href="?pagina=<?php echo $pagina_actual + 1; ?>&buscar=<?php echo urlencode($busqueda); ?>#lista-productos">Siguiente</a>
                             </li>
                         </ul>
                     </nav>

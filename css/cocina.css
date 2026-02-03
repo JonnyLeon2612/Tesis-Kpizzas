@@ -173,3 +173,21 @@
         margin-bottom: 0.5rem;
     }
 }
+.pedido-bloqueado {
+    background-color: #e9ecef !important;
+    border: 2px dashed #adb5bd !important;
+    position: relative;
+    pointer-events: none; /* Evita clics */
+}
+
+.bloqueo-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+}
+
+.opacity-50 {
+    opacity: 0.5;
+}

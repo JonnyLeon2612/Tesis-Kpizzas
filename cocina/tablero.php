@@ -82,6 +82,7 @@ $stmt = $pdo->prepare("
         c.total, 
         c.fecha_creacion, 
         c.tipo_servicio,
+        c.editando,
         u.nombre as mesero_nombre,
         COALESCE(m.numero, 0) as mesa_numero /* COALESCE para manejar NULOs (pedidos para llevar) */
     FROM comanda c
@@ -166,7 +167,11 @@ $pedidos = $stmt->fetchAll();
             </div>
         <?php else: ?>
             <div class="row">
-                <?php foreach ($pedidos as $pedido): 
+<?php foreach ($pedidos as $pedido): 
+                    // 1. Lógica de detección de bloqueo
+                    $esta_bloqueado = (isset($pedido['editando']) && $pedido['editando'] == 1);
+                    $clase_bloqueo = $esta_bloqueado ? 'pedido-bloqueado border-danger' : '';
+
                     // Define el color y texto del badge según el estado
                     $estado_badge = [
                         'en_preparacion' => ['warning', 'En Preparación'],
@@ -174,9 +179,18 @@ $pedidos = $stmt->fetchAll();
                     ][$pedido['estado']];
                 ?>
                     <div class="col-12 mb-3">
-                        <div class="card pedido-card estado-<?php echo $pedido['estado']; ?>">
+                        <div class="card pedido-card shadow-sm estado-<?php echo $pedido['estado']; ?> <?php echo $clase_bloqueo; ?>" style="position: relative; overflow: hidden;">
+                            
+                            <?php if ($esta_bloqueado): ?>
+                                <div class="bloqueo-overlay d-flex align-items-center justify-content-center" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(233, 236, 239, 0.7); z-index: 10;">
+                                    <span class="badge bg-dark p-2 shadow">
+                                        <i class="fas fa-user-edit me-2"></i>MESERO EDITANDO...
+                                    </span>
+                                </div>
+                            <?php endif; ?>
+
                             <div class="card-body">
-                                <div class="row align-items-center">
+                                <div class="row align-items-center <?php echo $esta_bloqueado ? 'opacity-50' : ''; ?>">
                                     <div class="col-md-8">
                                         <div class="d-flex align-items-center mb-2">
                                             <h5 class="card-title mb-0 me-3">
@@ -204,17 +218,20 @@ $pedidos = $stmt->fetchAll();
                                     <div class="col-md-4 text-end">
                                         <?php if ($pedido['estado'] === 'en_preparacion'): ?>
                                             <button type="button" class="btn btn-success btn-sm" 
+                                                    <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
                                                     onclick="cocinaManager.marcarComoListo(<?php echo $pedido['id']; ?>)">
                                                 <i class="fas fa-check me-1"></i>Marcar Listo
                                             </button>
                                         <?php else: ?>
                                             <button type="button" class="btn btn-warning btn-sm"
+                                                    <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
                                                     onclick="cocinaManager.volverAPreparacion(<?php echo $pedido['id']; ?>)">
                                                 <i class="fas fa-undo me-1"></i>Volver a Preparar
                                             </button>
                                         <?php endif; ?>
                                         
                                         <button class="btn btn-info btn-sm ms-1" 
+                                                <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
                                                 onclick="cocinaManager.toggleDetalles(<?php echo $pedido['id']; ?>)">
                                             <i class="fas fa-list me-1"></i>Detalles
                                         </button>
@@ -233,21 +250,17 @@ $pedidos = $stmt->fetchAll();
                                         JOIN producto p ON dc.producto_id = p.id
                                         JOIN categoria_producto cp ON p.categoria_id = cp.id
                                         WHERE dc.comanda_id = ?
-                                        ORDER BY dc.id ASC /* Importante ordenar por ID para agrupar pizzas */
+                                        ORDER BY dc.id ASC
                                     ");
                                     $stmt_detalle->execute([$pedido['id']]);
                                     $detalles = $stmt_detalle->fetchAll();
                                     
-                                    // LÓGICA DE AGRUPACIÓN DE PIZZAS
-                                    // La base de datos guarda 'Pizza Base' y 'Ingredientes' como filas separadas.
-                                    // Este código los agrupa para que se muestren juntos.
                                     $pizzas = [];
                                     $bebidas = [];
-                                    $current_pizza_index = -1; // Rastreador de la pizza actual
+                                    $current_pizza_index = -1;
                                     
                                     foreach ($detalles as $detalle) {
                                         if ($detalle['categoria'] === 'Pizza Base') {
-                                            // Es una nueva pizza, crear un nuevo grupo.
                                             $current_pizza_index++;
                                             $pizzas[$current_pizza_index] = [
                                                 'base' => $detalle,
@@ -255,10 +268,8 @@ $pedidos = $stmt->fetchAll();
                                                 'tamanio' => $detalle['tamanio']
                                             ];
                                         } elseif ($detalle['categoria'] === 'Ingrediente' && $current_pizza_index >= 0) {
-                                            // Es un ingrediente, agregarlo a la pizza actual.
                                             $pizzas[$current_pizza_index]['ingredientes'][] = $detalle;
                                         } elseif ($detalle['categoria'] === 'Bebida') {
-                                            // Es una bebida, agregarla a la lista de bebidas.
                                             $bebidas[] = $detalle;
                                         }
                                     }
@@ -274,7 +285,6 @@ $pedidos = $stmt->fetchAll();
                                                 <div class="pizza-individual mb-3 p-3 border rounded bg-light">
                                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                                         <h6 class="fw-bold text-primary mb-0">
-                                                            <i class="fas fa-pizza-slice me-1"></i>
                                                             Pizza <?php echo $index + 1; ?> - 
                                                             <span class="badge bg-warning text-dark"><?php echo $pizza['tamanio']; ?></span>
                                                         </h6>
@@ -287,16 +297,9 @@ $pedidos = $stmt->fetchAll();
                                                                 <?php foreach ($pizza['ingredientes'] as $ingrediente): ?>
                                                                     <span class="badge bg-secondary me-1 mb-1">
                                                                         <?php echo htmlspecialchars($ingrediente['nombre']); ?>
-                                                                        <?php if ($ingrediente['cantidad'] > 1): ?>
-                                                                            (x<?php echo $ingrediente['cantidad']; ?>)
-                                                                        <?php endif; ?>
                                                                     </span>
                                                                 <?php endforeach; ?>
                                                             </div>
-                                                        </div>
-                                                    <?php else: ?>
-                                                        <div class="ms-3 text-muted small">
-                                                            <i>Pizza básica sin ingredientes adicionales</i>
                                                         </div>
                                                     <?php endif; ?>
                                                 </div>
@@ -313,10 +316,7 @@ $pedidos = $stmt->fetchAll();
                                                 <?php foreach ($bebidas as $bebida): ?>
                                                     <div class="col-md-6 col-lg-4 mb-2">
                                                         <div class="d-flex justify-content-between align-items-center p-2 border rounded bg-white">
-                                                            <span class="small">
-                                                                <i class="fas fa-cocktail text-info me-2"></i>
-                                                                <?php echo htmlspecialchars($bebida['nombre']); ?>
-                                                            </span>
+                                                            <span class="small"><?php echo htmlspecialchars($bebida['nombre']); ?></span>
                                                             <span class="badge bg-dark">x<?php echo $bebida['cantidad']; ?></span>
                                                         </div>
                                                     </div>
