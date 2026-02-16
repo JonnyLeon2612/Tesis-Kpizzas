@@ -8,13 +8,18 @@ class VentaManager {
         
         // VARIABLES CRÍTICAS PARA EDICIÓN
         this.editandoComandaId = null; 
+        
+        window.addEventListener('beforeunload', () => {
+            if (this.editandoComandaId) {
+                navigator.sendBeacon(`./historial_manager.php?action=desbloquear&id=${this.editandoComandaId}`);
+            }
+        });
+
         this.indexSiendoEditado = null; 
         
-        // Solo ejecutamos init() si existen los contenedores de historial (estamos en venta.php)
         if (document.getElementById('history-list')) {
             this.init();
         } else {
-            // Si estamos en editar_pedido.php, solo activamos eventos y visualización
             this.setupEventListeners();
             this.updatePreciosDisplay();
         }
@@ -26,6 +31,8 @@ class VentaManager {
         this.updateCurrentItemTotal();
         this.actualizarUI();
         this.cargarHistorialPedidos();
+        this.setupCRM();
+
         setInterval(() => this.verificarPedidosListos(), 5000); 
     }
 
@@ -66,85 +73,371 @@ class VentaManager {
         window.limpiarNotificaciones = () => this.limpiarNotificaciones();
     }
 
-    async iniciarModoEdicionPagina(id) {
-    this.editandoComandaId = id;
-    try {
-        const response = await fetch(`./historial_manager.php?action=obtener_detalle&id=${id}`);
-        const data = await response.json();
+    setupCRM() {
+        const inputCedula = document.getElementById('cli_cedula');
+        if (!inputCedula) return;
 
-        if (data.success) {
-            this.orderList = [];
-            let currentPizza = null;
+        let timeout = null;
+        inputCedula.addEventListener('input', () => {
+            clearTimeout(timeout);
+            const cedula = inputCedula.value.trim();
+            if (cedula.length < 3) return;
 
-            data.detalles.forEach(d => {
-                if (d.tipo_categoria === 'Pizza Base') {
-                    currentPizza = { 
-                        tipo: 'Pizza', id_base: d.producto_id, tamanio: d.tamanio, 
-                        precio_base: parseFloat(d.precio_unitario), ingredientes: [] 
-                    };
-                    this.orderList.push(currentPizza);
-                } else if (d.tipo_categoria === 'Ingrediente' && currentPizza) {
-                    currentPizza.ingredientes.push({ id: d.producto_id, nombre: d.nombre, precio: parseFloat(d.precio_unitario) });
-                } else if (d.tipo_categoria === 'Bebida') {
-                    this.orderList.push({ tipo: 'Bebida', id: d.producto_id, nombre: d.nombre, precio: parseFloat(d.precio_unitario) });
-                }
-            });
-
-            this.updateFullOrderSummary(); 
-            const info = document.getElementById('info-cabecera');
-            if(info) info.textContent = `Pedido #${id} - ${data.comanda.tipo_servicio}`;
-        }
-    } catch (e) {
-        console.error("Error cargando datos:", e);
-    }
-}
-
-    // --- NUEVO: FUNCIÓN PARA EDITAR INGREDIENTES DE UN ITEM YA AGREGADO ---
-cargarItemParaEditar(index) {
-this.indexSiendoEditado = index;
-    const item = this.orderList[index];
-    
-    if (item.tipo === 'Bebida') {
-        this.showToast('Las bebidas no tienen ingredientes editables', 'warning');
-        return;
-    }
-
-    // 1. Limpiar todos los checkboxes primero
-    document.querySelectorAll('.ingrediente-checkbox').forEach(cb => cb.checked = false);
-
-    // 2. Cargar el tamaño de la pizza
-    const radio = document.querySelector(`input[name="tamanio"][value="${item.tamanio}"]`);
-    if (radio) {
-        radio.checked = true;
-        // Forzamos actualización de etiquetas de precios
-        this.updatePreciosDisplay();
-    }
-
-    // 3. Marcar los ingredientes de esta pizza específica
-    if (item.ingredientes && Array.isArray(item.ingredientes)) {
-        item.ingredientes.forEach(ing => {
-            // Buscamos por el ID del producto (id_ingrediente)
-            const checkbox = document.getElementById(`ing-${ing.id}`) || 
-                             document.getElementById(`ingrediente-${ing.id}`);
-            if (checkbox) checkbox.checked = true;
+            timeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`../api/buscar_cliente.php?cedula=${cedula}`);
+                    const data = await response.json();
+                    if (data.found) {
+                        document.getElementById('cli_nombre').value = data.data.nombre;
+                        this.showToast(`Cliente encontrado: ${data.data.nombre}`, 'success');
+                    }
+                } catch(e) { console.error(e); }
+            }, 500);
         });
     }
 
-    // 4. UI: Cambiar botón a modo "Actualizar"
-    const btn = document.getElementById('agregar-btn');
-    if (btn) {
-        btn.innerHTML = `<i class="fas fa-sync me-2"></i>Actualizar Pizza ${index + 1}`;
-        btn.classList.replace('btn-outline-primary', 'btn-primary');
+    selectTipoServicio(event) {
+        const option = event.currentTarget;
+        this.currentTipoServicio = option.getAttribute('data-servicio-type');
+        document.getElementById('tipo_servicio_input').value = this.currentTipoServicio;
+        document.getElementById('servicio-type-section').style.display = 'none';
+
+        if (this.currentTipoServicio === 'Mesa') {
+            document.getElementById('table-layout-section').style.display = 'block';
+            document.getElementById('main-title').textContent = 'Selecciona una Mesa';
+            document.getElementById('crm-section').style.display = 'none';
+        } else {
+            this.startTakeAwayOrder();
+        }
     }
 
-    // 5. Scroll suave hacia el formulario para que el mesero vea el cambio
-    document.getElementById('pizzaForm').scrollIntoView({ behavior: 'smooth' });
-    
-    this.updateCurrentItemTotal();
-    this.showToast(`Editando ingredientes de Pizza ${index + 1}`, 'info');
-}
+    startTakeAwayOrder() {
+        document.getElementById('mesa_id_input').value = 0;
+        document.getElementById('current-servicio-display').textContent = 'Para Llevar';
+        document.getElementById('order-form-section').style.display = 'block';
+        document.getElementById('main-title').textContent = 'Pedido Para Llevar';
+        document.getElementById('crm-section').style.display = 'block';
+        document.getElementById('cli_cedula').value = '';
+        document.getElementById('cli_nombre').value = '';
+        this.showToast('Iniciando pedido para llevar', 'info');
+    }
 
-    // --- NOTIFICACIONES Y TABLERO ---
+    selectMesa(event) {
+        const mesa = event.currentTarget;
+        if (mesa.classList.contains('mesa-ocupada') || mesa.hasAttribute('disabled')) {
+            this.showToast('Esta mesa ya está ocupada', 'warning');
+            return; 
+        }
+        const mesaId = mesa.getAttribute('data-mesa-id');
+        const mesaNumero = mesa.getAttribute('data-mesa-numero');
+        document.getElementById('mesa_id_input').value = mesaId;
+        document.getElementById('current-servicio-display').textContent = 'Mesa ' + mesaNumero;
+        document.getElementById('table-layout-section').style.display = 'none';
+        document.getElementById('order-form-section').style.display = 'block';
+        document.getElementById('main-title').textContent = 'Pedido Mesa ' + mesaNumero;
+        document.getElementById('crm-section').style.display = 'none';
+        this.showToast('Tomando pedido para Mesa ' + mesaNumero, 'info');
+    }
+
+    updatePreciosDisplay() {
+        const tamanioElement = document.querySelector('input[name="tamanio"]:checked');
+        if (!tamanioElement) return;
+        const tamanio = tamanioElement.value;
+        document.querySelectorAll('.ingrediente-checkbox').forEach(checkbox => {
+            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
+            const span = document.querySelector(`.precios-display[data-id="${checkbox.value}"]`);
+            if (precios && precios[tamanio] && span) {
+                span.textContent = `$${precios[tamanio].toFixed(2)}`;
+            }
+        });
+        document.querySelectorAll('.bebida-checkbox').forEach(checkbox => {
+            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
+            const span = document.querySelector(`.precios-display-bebida[data-id="${checkbox.value}"]`);
+            if (precios && precios['Pequena'] && span) {
+                span.textContent = `$${precios['Pequena'].toFixed(2)}`;
+            }
+        });
+    }
+
+    updateCurrentItemTotal() {
+        const radio = document.querySelector('input[name="tamanio"]:checked');
+        if(!radio) return;
+        const tamanio = radio.value;
+        let total = this.preciosBase[tamanio];
+        const lista = document.getElementById('factura-list-current');
+        lista.innerHTML = '';
+
+        const itemBase = document.createElement('li');
+        itemBase.className = 'list-group-item d-flex justify-content-between align-items-center px-0';
+        itemBase.innerHTML = `<span>${this.preciosBase.nombre} (${tamanio})</span><span class="fw-bold">$${total.toFixed(2)}</span>`;
+        lista.appendChild(itemBase);
+
+        document.querySelectorAll('.ingrediente-checkbox:checked').forEach(checkbox => {
+            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
+            const nombre = checkbox.getAttribute('data-nombre');
+            const precio = precios[tamanio];
+            total += precio;
+            const item = document.createElement('li');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center px-0';
+            item.innerHTML = `<span>${nombre}</span><span class="fw-bold">$${precio.toFixed(2)}</span>`;
+            lista.appendChild(item);
+        });
+
+        document.querySelectorAll('.bebida-checkbox:checked').forEach(checkbox => {
+            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
+            const nombre = checkbox.getAttribute('data-nombre');
+            const precio = precios['Pequena'];
+            total += precio;
+            const item = document.createElement('li');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center px-0 text-info';
+            item.innerHTML = `<span>${nombre}</span><span class="fw-bold">$${precio.toFixed(2)}</span>`;
+            lista.appendChild(item);
+        });
+        this.actualizarTotalBolivares(total);
+    }
+
+    actualizarTotalBolivares(totalDolares) {
+        const totalBsDisplay = document.getElementById('total-bs-display');
+        const totalBolivares = totalDolares * this.tasaDolar;
+        if(totalBsDisplay) totalBsDisplay.textContent = totalBolivares.toFixed(2);
+    }
+
+    addToOrder() {
+        const radioTamanio = document.querySelector('input[name="tamanio"]:checked');
+        if(!radioTamanio) return;
+        const tamanio = radioTamanio.value;
+        const ingredientes = Array.from(document.querySelectorAll('.ingrediente-checkbox:checked'));
+        const bebidas = Array.from(document.querySelectorAll('.bebida-checkbox:checked'));
+
+        const pizza = {
+            tipo: 'Pizza',
+            id_base: this.preciosBase.id,
+            tamanio: tamanio,
+            precio_base: this.preciosBase[tamanio],
+            ingredientes: ingredientes.map(ing => ({
+                id: ing.value,
+                nombre: ing.getAttribute('data-nombre'),
+                precio: JSON.parse(ing.getAttribute('data-precios'))[tamanio]
+            }))
+        };
+
+        if (this.indexSiendoEditado !== null) {
+            this.orderList[this.indexSiendoEditado] = pizza;
+            this.indexSiendoEditado = null; 
+            const btn = document.getElementById('agregar-btn');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-plus-circle me-2"></i>Agregar al Pedido';
+                btn.classList.replace('btn-primary', 'btn-outline-primary');
+            }
+            this.showToast('Pizza actualizada', 'success');
+        } else {
+            this.orderList.push(pizza);
+            bebidas.forEach(beb => {
+                const precios = JSON.parse(beb.getAttribute('data-precios'));
+                this.orderList.push({
+                    tipo: 'Bebida',
+                    id: beb.value,
+                    nombre: beb.getAttribute('data-nombre'),
+                    precio: precios['Pequena']
+                });
+            });
+            this.showToast('Agregado al pedido', 'success');
+        }
+        document.querySelectorAll('.ingrediente-checkbox, .bebida-checkbox').forEach(cb => cb.checked = false);
+        this.updateCurrentItemTotal();
+        this.updateFullOrderSummary();
+    }
+
+    updateFullOrderSummary() {
+        const lista = document.getElementById('factura-list-full');
+        const totalDisplay = document.getElementById('total-display');
+        if(!lista) return;
+        lista.innerHTML = '';
+        let total = 0;
+
+        this.orderList.forEach((item, index) => {
+            let subtotal = 0;
+            if (item.tipo === 'Pizza') {
+                subtotal = item.precio_base + item.ingredientes.reduce((sum, ing) => sum + ing.precio, 0);
+                total += subtotal;
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent';
+                li.innerHTML = `<div class="d-flex align-items-center"><button type="button" class="btn btn-sm btn-link text-primary p-0 me-2" onclick="window.ventaManagerInstance.cargarItemParaEditar(${index})"><i class="fas fa-pen"></i></button><span>Pizza ${index + 1} (${item.tamanio})</span></div><span class="fw-bold">$${subtotal.toFixed(2)}</span>`;
+                lista.appendChild(li);
+            } else {
+                subtotal = item.precio;
+                total += subtotal;
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent';
+                li.innerHTML = `<div><button type="button" class="btn btn-sm btn-link text-danger p-0 me-2" onclick="window.ventaManagerInstance.eliminarItemCarrito(${index})"><i class="fas fa-times"></i></button><span>${item.nombre}</span></div><span class="fw-bold">$${subtotal.toFixed(2)}</span>`;
+                lista.appendChild(li);
+            }
+        });
+        if(totalDisplay) totalDisplay.textContent = total.toFixed(2);
+        this.actualizarTotalBolivares(total);
+    }
+    
+    eliminarItemCarrito(index) {
+        this.orderList.splice(index, 1);
+        this.updateFullOrderSummary();
+    }
+
+    async submitOrder() {
+        if (this.orderList.length === 0) {
+            this.showToast('Agrega al menos un artículo al pedido', 'warning');
+            return;
+        }
+        const mesaId = document.getElementById('mesa_id_input').value;
+        const tipoServicio = document.getElementById('tipo_servicio_input').value;
+        const cliCedula = document.getElementById('cli_cedula').value.trim();
+        const cliNombre = document.getElementById('cli_nombre').value.trim();
+
+        if (tipoServicio === 'Llevar' && cliNombre === '') {
+            Swal.fire('Faltan datos', 'Debe ingresar el nombre del cliente para pedidos Para Llevar.', 'warning');
+            return;
+        }
+
+        const orderData = {
+            mesa_id: parseInt(mesaId),
+            tipo_servicio: tipoServicio,
+            pedido: this.orderList,
+            edit_id: this.editandoComandaId, 
+            cliente_cedula: cliCedula,
+            cliente_nombre: cliNombre
+        };
+
+        try {
+            Swal.fire({ title: 'Enviando pedido...', text: 'Por favor espere', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+            const response = await fetch('venta.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
+            const result = await response.json();
+            Swal.close();
+            if (result.success) {
+                this.showSuccessAlert(result.message, result.comanda_id);
+                this.orderList = [];
+                this.editandoComandaId = null;
+                this.indexSiendoEditado = null;
+                this.updateFullOrderSummary();
+                this.cargarHistorialPedidos(); 
+            } else {
+                this.showErrorAlert('Error al enviar el pedido', result.error);
+            }
+        } catch (error) {
+            Swal.close();
+            this.showErrorAlert('Error de conexión', 'No se pudo conectar con el servidor');
+        }
+    }
+
+    backToServicioType() {
+        document.getElementById('servicio-type-section').style.display = 'block';
+        document.getElementById('table-layout-section').style.display = 'none';
+        document.getElementById('order-form-section').style.display = 'none';
+        document.getElementById('main-title').textContent = 'Tipo de Servicio';
+        if (this.editandoComandaId) {
+             fetch(`./historial_manager.php?action=desbloquear&id=${this.editandoComandaId}`);
+        }
+        this.orderList = [];
+        this.editandoComandaId = null;
+        this.indexSiendoEditado = null;
+        this.updateFullOrderSummary();
+    }
+
+    backToTables() {
+        if (this.currentTipoServicio === 'Mesa') {
+            document.getElementById('table-layout-section').style.display = 'block';
+            document.getElementById('order-form-section').style.display = 'none';
+            document.getElementById('main-title').textContent = 'Selecciona una Mesa';
+        } else {
+            this.backToServicioType();
+        }
+    }
+
+    showToast(message, type) {
+        const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true });
+        Toast.fire({ icon: type, title: message });
+    }
+
+    showSuccessAlert(message, comandaId) {
+        const alertHtml = `<p class="fs-5">${message}</p><hr><h3 class="fw-bold text-uppercase">N° Pedido: ${comandaId}</h3>`;
+        Swal.fire({ icon: 'success', title: '¡Éxito!', html: alertHtml, confirmButtonText: 'Aceptar', confirmButtonColor: '#D82626' }).then((result) => {
+            if (result.isConfirmed) { this.backToServicioType(); }
+        });
+    }
+
+    showErrorAlert(title, message) {
+        Swal.fire({ icon: 'error', title: title, text: message, confirmButtonColor: '#D82626' });
+    }
+    
+    async iniciarModoEdicionPagina(id) {
+        try {
+            const blockRes = await fetch(`./historial_manager.php?action=bloquear&id=${id}`);
+            const blockData = await blockRes.json();
+            if (!blockData.success) {
+                Swal.fire('Error', blockData.error || 'El pedido ya está siendo editado', 'error');
+                return;
+            }
+            this.editandoComandaId = id;
+            const response = await fetch(`./historial_manager.php?action=obtener_detalle&id=${id}`);
+            const data = await response.json();
+
+            if (data.success) {
+                this.orderList = [];
+                let currentPizza = null;
+                data.detalles.forEach(d => {
+                    if (d.tipo_categoria === 'Pizza Base') {
+                        currentPizza = { tipo: 'Pizza', id_base: d.producto_id, tamanio: d.tamanio, precio_base: parseFloat(d.precio_unitario), ingredientes: [] };
+                        this.orderList.push(currentPizza);
+                    } else if (d.tipo_categoria === 'Ingrediente' && currentPizza) {
+                        currentPizza.ingredientes.push({ id: d.producto_id, nombre: d.nombre, precio: parseFloat(d.precio_unitario) });
+                    } else if (d.tipo_categoria === 'Bebida') {
+                        this.orderList.push({ tipo: 'Bebida', id: d.producto_id, nombre: d.nombre, precio: parseFloat(d.precio_unitario) });
+                    }
+                });
+                this.currentTipoServicio = data.comanda.tipo_servicio;
+                document.getElementById('mesa_id_input').value = data.comanda.mesa_id || 0;
+                document.getElementById('tipo_servicio_input').value = data.comanda.tipo_servicio;
+                document.getElementById('servicio-type-section').style.display = 'none';
+                document.getElementById('table-layout-section').style.display = 'none';
+                document.getElementById('order-form-section').style.display = 'block';
+                document.getElementById('main-title').textContent = `Editando Pedido #${id}`;
+                this.updateFullOrderSummary();
+                this.showToast('Pedido cargado para edición', 'info');
+            }
+        } catch (e) {
+            if (this.editandoComandaId) {
+                fetch(`./historial_manager.php?action=desbloquear&id=${this.editandoComandaId}`);
+                this.editandoComandaId = null;
+            }
+        }
+    }
+
+    cargarItemParaEditar(index) {
+        this.indexSiendoEditado = index;
+        const item = this.orderList[index];
+        if (item.tipo === 'Bebida') {
+            this.showToast('Las bebidas no tienen ingredientes editables', 'warning');
+            return;
+        }
+        document.querySelectorAll('.ingrediente-checkbox').forEach(cb => cb.checked = false);
+        const radio = document.querySelector(`input[name="tamanio"][value="${item.tamanio}"]`);
+        if (radio) {
+            radio.checked = true;
+            this.updatePreciosDisplay();
+        }
+        if (item.ingredientes) {
+            item.ingredientes.forEach(ing => {
+                const checkbox = document.querySelector(`.ingrediente-checkbox[value="${ing.id}"]`);
+                if (checkbox) checkbox.checked = true;
+            });
+        }
+        const btn = document.getElementById('agregar-btn');
+        if (btn) {
+            btn.innerHTML = `<i class="fas fa-sync me-2"></i>Actualizar Pizza ${index + 1}`;
+            btn.classList.replace('btn-outline-secondary', 'btn-primary');
+        }
+        document.getElementById('pizzaForm').scrollIntoView({ behavior: 'smooth' });
+        this.updateCurrentItemTotal();
+    }
+
     async actualizarUI() {
         try {
             const response = await fetch('./notificaciones_manager.php');
@@ -153,11 +446,13 @@ this.indexSiendoEditado = index;
             const contador = document.getElementById('notif-count');
             if(!lista || !contador) return;
             lista.innerHTML = '';
-            result.notificaciones.forEach(n => {
-                lista.innerHTML += `<div class="notif-item shadow-sm"><strong>${n.mensaje}</strong><br><small class="text-muted">${n.fecha_creacion}</small></div>`;
-            });
-            contador.textContent = result.notificaciones.length;
-            contador.style.display = result.notificaciones.length > 0 ? 'flex' : 'none';
+            if (result.notificaciones) {
+                result.notificaciones.forEach(n => {
+                    lista.innerHTML += `<div class="notif-item shadow-sm p-2 mb-2 bg-white border rounded"><strong>${n.mensaje}</strong><br><small class="text-muted">${n.fecha_creacion}</small></div>`;
+                });
+                contador.textContent = result.notificaciones.length;
+                contador.style.display = result.notificaciones.length > 0 ? 'flex' : 'none';
+            }
         } catch (error) { console.error(error); }
     }
 
@@ -169,17 +464,15 @@ this.indexSiendoEditado = index;
                 for (const pedido of result.pedidos) {
                     if (!this.notificacionesMostradas.has(pedido.id)) {
                         this.notificacionesMostradas.add(pedido.id);
-                        const msg = `Pedido #${pedido.id} listo!`;
+                        let identificador = pedido.tipo_servicio === 'Mesa' ? `Mesa #${pedido.mesa_id}` : (pedido.cliente_nombre || 'Cliente');
+                        const msg = `¡Pedido de ${identificador} listo!`;
                         const fd = new FormData();
                         fd.append('action', 'guardar'); fd.append('mensaje', msg); fd.append('pedido_id', pedido.id);
-                        const res = await fetch('./notificaciones_manager.php', { method: 'POST', body: fd });
-                        const data = await res.json();
-                        if (data.new) {
-                            Swal.fire({ title: '¡Pedido Listo!', text: msg, icon: 'success', timer: 4000, showConfirmButton: false, toast: true, position: 'top-end' });
-                            const sonido = document.getElementById('notificacion-sonido');
-                            if(sonido) { sonido.currentTime = 0; sonido.play().catch(e => {}); }
-                            this.actualizarUI();
-                        }
+                        await fetch('./notificaciones_manager.php', { method: 'POST', body: fd });
+                        Swal.fire({ title: '¡Pedido Listo!', text: msg, icon: 'success', timer: 5000, showConfirmButton: false, toast: true, position: 'top-end' });
+                        const sonido = document.getElementById('notificacion-sonido');
+                        if(sonido) { sonido.currentTime = 0; sonido.play().catch(e => {}); }
+                        this.actualizarUI();
                     }
                 }
             }
@@ -187,7 +480,7 @@ this.indexSiendoEditado = index;
     }
 
     async limpiarNotificaciones() {
-        const result = await Swal.fire({ title: '¿Borrar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#000' });
+        const result = await Swal.fire({ title: '¿Borrar todo?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#000' });
         if (result.isConfirmed) {
             const fd = new FormData(); fd.append('action', 'borrar_todo');
             await fetch('./notificaciones_manager.php', { method: 'POST', body: fd });
@@ -202,291 +495,32 @@ this.indexSiendoEditado = index;
             const lista = document.getElementById('history-list');
             if(!lista) return;
             lista.innerHTML = '';
-            result.pedidos.forEach(p => {
-                const editable = (p.estado === 'en_preparacion' || p.estado === 'pendiente');
-                lista.innerHTML += `
-                    <div class="history-item p-2 mb-2 border rounded shadow-sm state-${p.estado}">
-                        <div class="d-flex justify-content-between">
-                            <strong>#${p.id}</strong> 
-                            <small class="badge ${p.estado === 'listo' ? 'bg-success' : 'bg-warning text-dark'}">${p.estado}</small>
-                        </div>
-                        <div class="small">${p.tipo_servicio} ${p.mesa_id ? '- Mesa '+p.mesa_id : ''}</div>
-                        <div class="mt-2 d-flex gap-1">
-                            ${editable ? `
-                                <button class="btn btn-xs btn-outline-danger" onclick="eliminarPedido(${p.id})"><i class="fas fa-trash"></i></button>
-                                <button class="btn btn-xs btn-outline-primary" onclick="editarPedido(${p.id})"><i class="fas fa-edit"></i></button>
-                            ` : ''}
-                        </div>
-                    </div>`;
-            });
+            if (result.pedidos) {
+                result.pedidos.forEach(p => {
+                    const editable = (p.estado === 'en_preparacion' || p.estado === 'pendiente');
+                    const destino = p.tipo_servicio === 'Mesa' ? `Mesa ${p.mesa_id}` : `Llevar (${p.nombre_cliente || 'Cliente'})`;
+                    lista.innerHTML += `<div class="history-item p-2 mb-2 border rounded shadow-sm state-${p.estado} bg-white"><div class="d-flex justify-content-between"><strong>#${p.id}</strong><small class="badge ${p.estado === 'listo' ? 'bg-success' : 'bg-warning text-dark'}">${p.estado}</small></div><div class="small fw-bold">${destino}</div><div class="mt-2 d-flex gap-1 justify-content-end">${editable ? `<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="window.eliminarPedido(${p.id})"><i class="fas fa-trash"></i></button><button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="window.ventaManagerInstance.iniciarModoEdicionPagina(${p.id})"><i class="fas fa-edit"></i></button>` : '<small class="text-muted fst-italic"><i class="fas fa-lock"></i> Bloqueado</small>'}</div></div>`;
+                });
+            }
         } catch (error) { console.error(error); }
     }
-
-    // --- LÓGICA DE VENTAS ---
-    selectTipoServicio(event) {
-        this.currentTipoServicio = event.currentTarget.getAttribute('data-servicio-type');
-        document.getElementById('tipo_servicio_input').value = this.currentTipoServicio;
-        document.getElementById('servicio-type-section').style.display = 'none';
-        if (this.currentTipoServicio === 'Mesa') {
-            document.getElementById('table-layout-section').style.display = 'block';
-            document.getElementById('main-title').textContent = 'Selecciona una Mesa';
-        } else { this.startTakeAwayOrder(); }
-    }
-
-    startTakeAwayOrder() {
-        document.getElementById('mesa_id_input').value = 0;
-        document.getElementById('current-servicio-display').textContent = 'Para Llevar';
-        document.getElementById('order-form-section').style.display = 'block';
-        document.getElementById('main-title').textContent = 'Pedido Para Llevar';
-    }
-
-    selectMesa(event) {
-        const mesa = event.currentTarget;
-        if (mesa.classList.contains('mesa-ocupada') || mesa.hasAttribute('disabled')) return;
-        document.getElementById('mesa_id_input').value = mesa.getAttribute('data-mesa-id');
-        document.getElementById('current-servicio-display').textContent = 'Mesa ' + mesa.getAttribute('data-mesa-numero');
-        document.getElementById('table-layout-section').style.display = 'none';
-        document.getElementById('order-form-section').style.display = 'block';
-    }
-
-    updatePreciosDisplay() {
-        const radio = document.querySelector('input[name="tamanio"]:checked');
-        if(!radio) return;
-        const tamanio = radio.value;
-        document.querySelectorAll('.ingrediente-checkbox').forEach(checkbox => {
-            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
-            const span = document.querySelector(`.precios-display[data-id="${checkbox.value}"]`);
-            if (precios && precios[tamanio]) span.textContent = `$${precios[tamanio].toFixed(2)}`;
-        });
-    }
-
-    updateCurrentItemTotal() {
-        const radio = document.querySelector('input[name="tamanio"]:checked');
-        if(!radio) return;
-        const tamanio = radio.value;
-        let total = this.preciosBase[tamanio];
-        const lista = document.getElementById('factura-list-current');
-        lista.innerHTML = `<li>${this.preciosBase.nombre} (${tamanio}) - $${total.toFixed(2)}</li>`;
-        
-        document.querySelectorAll('.ingrediente-checkbox:checked').forEach(cb => {
-            const p = JSON.parse(cb.getAttribute('data-precios'))[tamanio];
-            total += p;
-            lista.innerHTML += `<li>${cb.getAttribute('data-nombre')} - $${p.toFixed(2)}</li>`;
-        });
-        document.querySelectorAll('.bebida-checkbox:checked').forEach(cb => {
-            const p = JSON.parse(cb.getAttribute('data-precios'))['Pequena'];
-            total += p;
-            lista.innerHTML += `<li>${cb.getAttribute('data-nombre')} - $${p.toFixed(2)}</li>`;
-        });
-        this.actualizarTotalBolivares(total);
-    }
-
-    actualizarTotalBolivares(totalD) {
-        document.getElementById('total-bs-display').textContent = (totalD * this.tasaDolar).toFixed(2);
-    }
-
-addToOrder() {
-        const radioTamanio = document.querySelector('input[name="tamanio"]:checked');
-        if(!radioTamanio) return;
-        const tamanio = radioTamanio.value;
-        
-        const ings = Array.from(document.querySelectorAll('.ingrediente-checkbox:checked'));
-        
-        // Preparamos el objeto de la pizza
-        const pizzaData = {
-            tipo: 'Pizza',
-            id_base: this.preciosBase.id,
-            tamanio: tamanio,
-            precio_base: this.preciosBase[tamanio],
-            ingredientes: ings.map(i => ({
-                id: i.value,
-                nombre: i.getAttribute('data-nombre'),
-                precio: JSON.parse(i.getAttribute('data-precios'))[tamanio]
-            }))
-        };
-
-        if (this.indexSiendoEditado !== null) {
-            // REEMPLAZO: Sobrescribimos la posición original
-            this.orderList[this.indexSiendoEditado] = pizzaData;
-            this.indexSiendoEditado = null; 
-            
-            const btn = document.getElementById('agregar-btn');
-            if (btn) {
-                btn.innerHTML = '<i class="fas fa-plus-circle me-2"></i>Agregar al Pedido';
-                btn.classList.replace('btn-primary', 'btn-outline-primary');
-            }
-            this.showToast('Pizza actualizada', 'success');
-        } else {
-            // AGREGAR NUEVO
-            if (ings.length > 0) this.orderList.push(pizzaData);
-            
-            document.querySelectorAll('.bebida-checkbox:checked').forEach(b => {
-                this.orderList.push({ 
-                    tipo: 'Bebida', id: b.value, nombre: b.getAttribute('data-nombre'), 
-                    precio: JSON.parse(b.getAttribute('data-precios'))['Pequena'] 
-                });
-            });
-            this.showToast('Agregado al pedido', 'success');
-        }
-
-        // Limpiar formulario y refrescar
-        document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-        this.updateFullOrderSummary();
-        this.updateCurrentItemTotal();
-    }
-
-updateFullOrderSummary() {
-    const lista = document.getElementById('factura-list-full');
-    if(!lista) return;
-    lista.innerHTML = '';
-    let total = 0;
-
-    this.orderList.forEach((item, index) => {
-        let subtotal = (item.precio_base || item.precio);
-        if (item.ingredientes) item.ingredientes.forEach(i => subtotal += i.precio);
-        total += subtotal;
-
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent';
-        li.innerHTML = `
-            <div class="d-flex align-items-center">
-                <button type="button" class="btn btn-sm btn-link text-primary p-0 me-2" onclick="window.ventaManagerInstance.cargarItemParaEditar(${index})">
-                    <i class="fas fa-pen"></i>
-                </button>
-                <span class="small">${item.tipo === 'Pizza' ? `Pizza ${index + 1} (${item.tamanio})` : item.nombre}</span>
-            </div>
-            <span class="fw-bold small">$${subtotal.toFixed(2)}</span>
-        `;
-        lista.appendChild(li);
-    });
-    
-    if(document.getElementById('total-display')) {
-        document.getElementById('total-display').textContent = total.toFixed(2);
-    }
-    this.actualizarTotalBolivares(total);
 }
 
-    async submitOrder() {
-        if (this.orderList.length === 0) return;
-        const data = {
-            mesa_id: parseInt(document.getElementById('mesa_id_input').value),
-            tipo_servicio: document.getElementById('tipo_servicio_input').value,
-            pedido: this.orderList,
-            edit_id: this.editandoComandaId // MANDAR EL ID SI ESTAMOS EDITANDO
-        };
-
-        try {
-            Swal.fire({ title: 'Enviando...', didOpen: () => Swal.showLoading() });
-            const response = await fetch('venta.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-            const result = await response.json();
-            Swal.close();
-            if (result.success) {
-                this.showSuccessAlert(result.message, result.comanda_id);
-                this.orderList = [];
-                this.editandoComandaId = null;
-                this.updateFullOrderSummary();
-                this.cargarHistorialPedidos();
-            }
-        } catch (error) { Swal.close(); }
-    }
-
-    backToServicioType() {
-        document.getElementById('servicio-type-section').style.display = 'block';
-        document.getElementById('table-layout-section').style.display = 'none';
-        document.getElementById('order-form-section').style.display = 'none';
-        document.getElementById('main-title').textContent = 'Tipo de Servicio';
-        this.orderList = [];
-        this.editandoComandaId = null;
-        this.updateFullOrderSummary();
-    }
-
-    backToTables() {
-        if (this.currentTipoServicio === 'Mesa') {
-            document.getElementById('table-layout-section').style.display = 'block';
-            document.getElementById('order-form-section').style.display = 'none';
-        } else { this.backToServicioType(); }
-    }
-
-    showToast(m, t) { Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 }).fire({ icon: t, title: m }); }
-    showSuccessAlert(m, id) { Swal.fire({ icon: 'success', title: '¡Éxito!', html: `<p>${m}</p><hr><h3>N° Pedido: ${id}</h3>`, confirmButtonColor: '#D82626' }).then(() => this.backToServicioType()); }
-}
-
-// --- FUNCIONES GLOBALES ---
 window.eliminarPedido = async (id) => {
-    const res = await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#000' });
+    const res = await Swal.fire({ title: '¿Cancelar Pedido?', text: 'Esta acción no se puede deshacer', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Sí, cancelar' });
     if(res.isConfirmed) {
         const fd = new FormData(); fd.append('id', id); fd.append('action', 'eliminar');
         const r = await fetch('./historial_manager.php', { method: 'POST', body: fd });
         const d = await r.json();
-        if(d.success) location.reload();
+        if(d.success) {
+            Swal.fire('Cancelado', '', 'success');
+            window.ventaManagerInstance.cargarHistorialPedidos();
+        } else {
+            Swal.fire('Error', d.error, 'error');
+        }
     }
 };
 
-window.editarPedido = async (id) => {
-    try {
-        // 1. Notificar al servidor que se inicia la edición (Cambia 'editando' a 1 en BD)
-        const blockRes = await fetch(`./historial_manager.php?action=bloquear&id=${id}`);
-        const blockData = await blockRes.json();
-        
-        if(!blockData.success) {
-            Swal.fire('Error', 'El pedido ya está siendo editado por alguien más', 'error');
-            return;
-        }
-        
-        // 2. Obtener detalles del pedido
-        const response = await fetch(`./historial_manager.php?action=obtener_detalle&id=${id}`);
-        const data = await response.json();
-        
-        if(data.success) {
-            const vm = window.ventaManagerInstance;
-            vm.orderList = [];
-            let currentPizza = null;
-
-            // Mapeo de productos desde la base de datos al formato del orderList
-            data.detalles.forEach(d => {
-                if (d.tipo_categoria === 'Pizza Base') {
-                    currentPizza = { 
-                        tipo: 'Pizza', 
-                        id_base: d.producto_id, 
-                        tamanio: d.tamanio, 
-                        precio_base: parseFloat(d.precio_unitario), 
-                        ingredientes: [] 
-                    };
-                    vm.orderList.push(currentPizza);
-                } else if (d.tipo_categoria === 'Ingrediente' && currentPizza) {
-                    currentPizza.ingredientes.push({ 
-                        id: d.producto_id, 
-                        nombre: d.nombre, 
-                        precio: parseFloat(d.precio_unitario) 
-                    });
-                } else if (d.tipo_categoria === 'Bebida') {
-                    vm.orderList.push({ 
-                        tipo: 'Bebida', 
-                        id: d.producto_id, 
-                        nombre: d.nombre, 
-                        precio: parseFloat(d.precio_unitario) 
-                    });
-                }
-            });
-
-            // 3. Preparar la interfaz de Venta
-            vm.editandoComandaId = id;
-            vm.currentTipoServicio = data.comanda.tipo_servicio;
-            document.getElementById('mesa_id_input').value = data.comanda.mesa_id || 0;
-            document.getElementById('tipo_servicio_input').value = data.comanda.tipo_servicio;
-
-            // Cambiar vistas
-            document.getElementById('servicio-type-section').style.display = 'none';
-            document.getElementById('table-layout-section').style.display = 'none';
-            document.getElementById('order-form-section').style.display = 'block';
-            document.getElementById('main-title').textContent = `Editando Pedido #${id}`;
-            
-            vm.updateFullOrderSummary();
-            if(document.getElementById('history-sidebar')) window.toggleSidebar('history-sidebar');
-            
-            vm.showToast('Pedido bloqueado para edición segura.', 'success');
-        }
-    } catch(e) { console.error("Error en editarPedido:", e); }
-};
-
-document.addEventListener('DOMContentLoaded', () => { window.ventaManagerInstance = new VentaManager(); });
+document.addEventListener('DOMContentLoaded', () => { 
+    window.ventaManagerInstance = new VentaManager(); 
+});
