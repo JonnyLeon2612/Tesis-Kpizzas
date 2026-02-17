@@ -14,7 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
     header('Content-Type: application/json');
     $data = json_decode(file_get_contents('php://input'), true);
 
+    // Variables de control
     $edit_id = isset($data['edit_id']) ? (int)$data['edit_id'] : null;
+    $adicion_id = isset($data['adicion_id']) ? (int)$data['adicion_id'] : null; // <--- NUEVO: ID para anexos
+    
     $mesa_id = isset($data['mesa_id']) ? (int)$data['mesa_id'] : 0;
     $tipo_servicio = isset($data['tipo_servicio']) ? $data['tipo_servicio'] : 'Mesa';
     $pedido_detalle = isset($data['pedido']) ? $data['pedido'] : [];
@@ -22,9 +25,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
     // --- DATOS DEL CLIENTE ---
     $cli_cedula = isset($data['cliente_cedula']) ? trim($data['cliente_cedula']) : '';
     $cli_nombre = isset($data['cliente_nombre']) ? trim($data['cliente_nombre']) : '';
-    $cliente_id = null;
+    // RECIBIMOS EL ID DEL CLIENTE SI VIENE DEL FRONTEND
+    $cliente_id = isset($data['cliente_id']) ? (int)$data['cliente_id'] : null;
 
-    if (($tipo_servicio === 'Mesa' && empty($mesa_id) && !$edit_id) || empty($pedido_detalle)) {
+    // Validación: Aceptamos si hay mesa, edit_id O adicion_id
+    if (($tipo_servicio === 'Mesa' && empty($mesa_id) && !$edit_id && !$adicion_id) || empty($pedido_detalle)) {
         echo json_encode(['success' => false, 'error' => 'Complete todos los campos requeridos.']);
         exit;
     }
@@ -32,9 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
     try {
         $pdo->beginTransaction();
 
-        // --- Lógica de cliente (solo para llevar) ---
-        if ($tipo_servicio === 'Llevar' && !empty($cli_nombre)) {
-            // Buscar si ya existe por cédula
+        // --- Lógica de cliente (solo para llevar y si no viene ID) ---
+        if ($tipo_servicio === 'Llevar' && empty($cliente_id) && !empty($cli_nombre)) {
             if (!empty($cli_cedula)) {
                 $stmtCheckCli = $pdo->prepare("SELECT id FROM cliente WHERE cedula = ? LIMIT 1");
                 $stmtCheckCli->execute([$cli_cedula]);
@@ -42,11 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             }
 
             if ($cliente_id) {
-                // Actualizar nombre por si cambió
                 $stmtUpdCli = $pdo->prepare("UPDATE cliente SET nombre = ? WHERE id = ?");
                 $stmtUpdCli->execute([$cli_nombre, $cliente_id]);
             } else {
-                // Crear nuevo cliente
                 $stmtInsCli = $pdo->prepare("INSERT INTO cliente (cedula, nombre) VALUES (?, ?)");
                 $cedula_val = !empty($cli_cedula) ? $cli_cedula : null;
                 $stmtInsCli->execute([$cedula_val, $cli_nombre]);
@@ -54,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             }
         }
 
-        // Calcular total del pedido
+        // Calcular total del pedido ACTUAL (lo nuevo que se envía)
         $total_pedido = 0.00;
         foreach ($pedido_detalle as $item) {
             if ($item['tipo'] === 'Pizza') {
@@ -67,8 +69,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             }
         }
 
-        if ($edit_id) {
-            // Actualizar comanda
+        if ($adicion_id) {
+            // ============================================
+            // CASO 1: AGREGAR A COMANDA EXISTENTE (ANEXO)
+            // ============================================
+            
+            // 1. Actualizamos el total sumando lo nuevo a lo viejo.
+            // 2. REBOTE: Cambiamos estado a 'en_preparacion' para que Cocina lo vea.
+            // 3. Quitamos bandera de edición.
+            $sql_update = "UPDATE comanda SET total = total + ?, estado = 'en_preparacion', editando = 0 WHERE id = ?";
+            $stmt_update = $pdo->prepare($sql_update);
+            $stmt_update->execute([$total_pedido, $adicion_id]);
+            
+            $comanda_id = $adicion_id;
+            
+            // IMPORTANTE: NO borramos los detalles anteriores.
+
+        } elseif ($edit_id) {
+            // ============================================
+            // CASO 2: EDICIÓN COMPLETA (CORRECCIÓN)
+            // ============================================
             $sql_update = "UPDATE comanda SET total = ?, editando = 0, mesa_id = ?, cliente_id = ?, tipo_servicio = ? WHERE id = ?";
             $stmt_update = $pdo->prepare($sql_update);
             $stmt_update->execute([
@@ -80,10 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             ]);
             $comanda_id = $edit_id;
 
+            // En edición normal, SÍ borramos lo viejo para reescribirlo
             $stmt_delete = $pdo->prepare("DELETE FROM detalle_comanda WHERE comanda_id = ?");
             $stmt_delete->execute([$comanda_id]);
+
         } else {
-            // Insertar nueva comanda
+            // ============================================
+            // CASO 3: NUEVA COMANDA
+            // ============================================
             $sql_insert = "INSERT INTO comanda (usuario_id, mesa_id, cliente_id, estado, tipo_servicio, total, editando) VALUES (?, ?, ?, ?, ?, ?, 0)";
             $stmt_insert = $pdo->prepare($sql_insert);
             $stmt_insert->execute([
@@ -97,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             $comanda_id = $pdo->lastInsertId();
         }
 
-        // Insertar detalles
+        // Insertar detalles (Común para todos: inserta lo que viene en el array 'pedido')
         $sql_detalle = "INSERT INTO detalle_comanda (comanda_id, producto_id, cantidad, tamanio, precio_unitario) VALUES (?, ?, ?, ?, ?)";
         $stmt_detalle = $pdo->prepare($sql_detalle);
 
@@ -112,17 +136,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             }
         }
 
-        // Actualizar estado de mesa
-        if (!$edit_id && $tipo_servicio === 'Mesa' && $mesa_id > 0) {
+        // Actualizar estado de mesa (solo si es nuevo y mesa)
+        if (!$edit_id && !$adicion_id && $tipo_servicio === 'Mesa' && $mesa_id > 0) {
             $stmt_mesa = $pdo->prepare("UPDATE mesa SET estado = 'ocupada' WHERE id = ?");
             $stmt_mesa->execute([$mesa_id]);
         }
 
+        // Mensaje de Notificación para Cocina (Guardado en BD para que 'mesero_notificaciones.php' lo lea si usas esa lógica)
+        $msg_tipo = "Nuevo Pedido";
+        if ($edit_id) $msg_tipo = "Pedido Modificado";
+        if ($adicion_id) $msg_tipo = "⚠️ AGREGADO EXTRA";
+
+        $identificador = ($tipo_servicio === 'Mesa') ? "Mesa #$mesa_id" : "Llevar";
+        
+        // OPCIONAL: Si tienes tabla de notificaciones, descomenta esto:
+        /*
+        $stmtNotif = $pdo->prepare("INSERT INTO notificaciones (usuario_id, mensaje, leido) VALUES (?, ?, 0)");
+        $stmtNotif->execute([$_SESSION['user']['id'], "$msg_tipo - $identificador"]); 
+        */
+
         $pdo->commit();
+
+        $msg_final = $edit_id ? 'Pedido actualizado exitosamente' : 'Pedido enviado a cocina';
+        if ($adicion_id) $msg_final = 'Productos agregados a la comanda';
 
         echo json_encode([
             'success' => true,
-            'message' => $edit_id ? 'Pedido actualizado exitosamente' : 'Pedido enviado a cocina',
+            'message' => $msg_final,
             'comanda_id' => $comanda_id
         ]);
 
@@ -174,7 +214,6 @@ $mesas = $stmt_mesas->fetchAll();
 </head>
 <audio id="notificacion-sonido" src="../img/notificacion.mp3" preload="auto"></audio>
 
-<!-- Sidebars (sin cambios) -->
 <div id="history-btn-container" class="sidebar-trigger" onclick="toggleSidebar('history-sidebar')">
     <i class="fas fa-history"></i>
 </div>
@@ -222,7 +261,6 @@ $mesas = $stmt_mesas->fetchAll();
         <div class="card shadow p-4">
           <h1 class="h4 mb-4 text-center text-uppercase fw-bold" id="main-title">Tipo de Servicio</h1>
 
-          <!-- Selección de servicio -->
           <div id="servicio-type-section">
             <p class="text-center text-muted mb-4">Selecciona el tipo de servicio para el pedido</p>
             <div class="row justify-content-center">
@@ -245,7 +283,6 @@ $mesas = $stmt_mesas->fetchAll();
             </div>
           </div>
 
-          <!-- Selección de mesa -->
           <div id="table-layout-section" style="display: none;">
             <p class="text-center text-muted">Haz clic en una mesa para tomar un pedido.</p>
             <button class="btn btn-outline-secondary mb-3" id="back-to-servicio-btn">← Volver</button>
@@ -267,7 +304,80 @@ $mesas = $stmt_mesas->fetchAll();
             </div>
           </div>
 
-          <!-- Formulario de pedido -->
+        <div id="seccion-cliente-llevar" class="cliente-filter-container" style="display:none;">
+            <div class="filter-header">
+                <h3><i class="fas fa-motorcycle"></i> Pedido Para Llevar</h3>
+                <p class="text-muted">Identifica al cliente antes de tomar la orden.</p>
+            </div>
+
+            <div class="search-box-wrapper">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" id="input-buscar-cliente" class="form-control" 
+                           placeholder="Buscar por Nombre, Cédula o Teléfono..." autocomplete="off">
+                </div>
+                <div id="lista-resultados-clientes" class="autocomplete-results"></div>
+            </div>
+
+            <div class="actions-row mt-3 text-end">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="toggleNuevoClienteForm()">
+                    <i class="fas fa-user-plus"></i> Nuevo Cliente
+                </button>
+            </div>
+
+            <div id="form-nuevo-cliente" class="new-client-card" style="display:none;">
+                <h5 class="mb-3">Registrar Nuevo Cliente</h5>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <input type="text" id="new-nombre" class="form-control" placeholder="Nombre Completo *">
+                    </div>
+                    <div class="col-md-6">
+                        <input type="text" id="new-cedula" class="form-control" placeholder="Cédula/DNI">
+                    </div>
+                    <div class="col-md-6">
+                        <input type="text" id="new-telefono" class="form-control" placeholder="Teléfono">
+                    </div>
+                    <div class="col-md-6">
+                        <input type="text" id="new-direccion" class="form-control" placeholder="Dirección">
+                    </div>
+                    <div class="col-12 text-end mt-2">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleNuevoClienteForm()">Cancelar</button>
+                        <button type="button" class="btn btn-success btn-sm" onclick="guardarNuevoCliente()">Guardar y Seleccionar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="frequent-clients-section mt-4">
+                <h6 class="text-uppercase text-muted" style="font-size: 0.8rem;">Clientes Frecuentes</h6>
+                <div id="grid-clientes-frecuentes" class="frequent-grid">
+                    </div>
+            </div>
+
+            <div id="cliente-seleccionado-info" class="selected-client-card" style="display:none;">
+                <div class="icon-box">
+                    <i class="fas fa-user-check"></i>
+                </div>
+                <div class="client-data">
+                    <h4 id="sel-cliente-nombre" class="m-0">Nombre Cliente</h4>
+                    <small id="sel-cliente-detalle" class="text-muted">C.I: --- | Tel: ---</small>
+                    <div id="sel-cliente-direccion" style="font-size: 0.85rem; color: #666;"></div>
+                    <input type="hidden" id="input_cliente_id_hidden">
+                </div>
+                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="resetClienteSelection()">
+                    <i class="fas fa-times"></i> Cambiar
+                </button>
+            </div>
+
+            <div class="footer-actions mt-4">
+                <button type="button" id="btn-siguiente-menu" class="btn btn-primary w-100 py-2" disabled onclick="irAlMenu()">
+                    CONTINUAR AL MENÚ <i class="fas fa-arrow-right ms-2"></i>
+                </button>
+                <button class="btn btn-outline-secondary w-100 mt-2" onclick="location.reload()">
+                    ← Cancelar
+                </button>
+            </div>
+        </div>
+
           <div id="order-form-section" style="display: none;">
             <h1 class="h4 mb-4 text-center text-uppercase fw-bold">
                <span id="current-servicio-display"></span>
@@ -277,25 +387,6 @@ $mesas = $stmt_mesas->fetchAll();
             <form id="pizzaForm">
               <input type="hidden" id="mesa_id_input" name="mesa_id">
               <input type="hidden" id="tipo_servicio_input" name="tipo_servicio">
-
-              <!-- NUEVO: Sección CRM (solo para llevar) -->
-              <div id="crm-section" class="card mb-4 border-danger shadow-sm" style="display:none;">
-                <div class="card-header bg-danger text-white fw-bold">
-                  <i class="fas fa-user-tag me-2"></i>Datos del Cliente (Para Llevar)
-                </div>
-                <div class="card-body">
-                  <div class="row g-3">
-                    <div class="col-md-4">
-                      <label class="form-label small fw-bold">Cédula</label>
-                      <input type="number" id="cli_cedula" class="form-control" placeholder="Ej: 12345678">
-                    </div>
-                    <div class="col-md-8">
-                      <label class="form-label small fw-bold">Nombre Completo <span class="text-danger">*</span></label>
-                      <input type="text" id="cli_nombre" class="form-control" placeholder="Ej: Juan Pérez">
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <div class="row">
                 <div class="col-md-6 mb-4">

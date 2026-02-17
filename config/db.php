@@ -1,5 +1,6 @@
 <?php
 // config/db.php
+date_default_timezone_set('America/Caracas');
 $host = 'localhost';
 $db = 'kpizzas_db';
 $user = 'root'; // XAMPP por defecto

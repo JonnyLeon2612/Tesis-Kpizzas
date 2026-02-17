@@ -13,17 +13,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comanda_id'])) {
     // Obtiene el ID de la comanda y el nuevo estado desde el formulario.
     $comanda_id = (int)$_POST['comanda_id'];
     $estado = $_POST['estado'];
-    
+
     // Lista de estados que la cocina puede asignar.
     $estados_permitidos = ['en_preparacion', 'listo'];
-    
+
     // Si el estado enviado es válido...
     if (in_array($estado, $estados_permitidos)) {
         // Prepara y ejecuta la actualización en la base de datos.
         $stmt = $pdo->prepare("UPDATE comanda SET estado = ? WHERE id = ?");
         $stmt->execute([$estado, $comanda_id]);
     }
-    
+
     // --- REDIRECCIÓN ---
     // Redirige de vuelta a la página de la que vino (HTTP_REFERER)
     // Esto es útil para conservar la página de la paginación en la
@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comanda_id'])) {
     if (isset($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'tablero.php') !== false) {
         $redirect_url = $_SERVER['HTTP_REFERER'];
     }
-    
+
     header('Location: ' . $redirect_url);
     exit;
 }
@@ -109,6 +109,7 @@ $pedidos = $stmt->fetchAll();
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -117,9 +118,11 @@ $pedidos = $stmt->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="../css/cocina.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <meta http-equiv="refresh" content="15">
 </head>
+
 <body class="bg-light">
-    
+
     <nav class="navbar navbar-expand-lg navbar-dark bg-kpizzas-red">
         <div class="container">
             <a class="navbar-brand fw-bold" href="#">Kpizza's Cocina</a>
@@ -167,10 +170,29 @@ $pedidos = $stmt->fetchAll();
             </div>
         <?php else: ?>
             <div class="row">
-<?php foreach ($pedidos as $pedido): 
+                <?php foreach ($pedidos as $pedido):
                     // 1. Lógica de detección de bloqueo
                     $esta_bloqueado = (isset($pedido['editando']) && $pedido['editando'] == 1);
                     $clase_bloqueo = $esta_bloqueado ? 'pedido-bloqueado border-danger' : '';
+
+                    // --- NUEVO: Lógica para detectar ANEXO (Add-on) ---
+                    $es_anexo = false;
+                    try {
+                        $hora_creacion = new DateTime($pedido['fecha_creacion']);
+                        $ahora = new DateTime();
+                        $diferencia = $ahora->diff($hora_creacion);
+
+                        // Si el pedido tiene más de 30 minutos de antigüedad y está en preparación, es un anexo
+                        // (Ajusta los 30 minutos según el ritmo de tu restaurante)
+                        if (($diferencia->i > 30 || $diferencia->h > 0 || $diferencia->d > 0) && $pedido['estado'] === 'en_preparacion') {
+                            $es_anexo = true;
+                        }
+                    } catch (Exception $e) {
+                    }
+
+                    // Estilo especial para Anexo (Borde amarillo grueso)
+                    $clase_anexo = $es_anexo ? 'border-warning border-4' : '';
+                    // --------------------------------------------------
 
                     // Define el color y texto del badge según el estado
                     $estado_badge = [
@@ -179,8 +201,8 @@ $pedidos = $stmt->fetchAll();
                     ][$pedido['estado']];
                 ?>
                     <div class="col-12 mb-3">
-                        <div class="card pedido-card shadow-sm estado-<?php echo $pedido['estado']; ?> <?php echo $clase_bloqueo; ?>" style="position: relative; overflow: hidden;">
-                            
+                        <div class="card pedido-card shadow-sm estado-<?php echo $pedido['estado']; ?> <?php echo $clase_bloqueo . ' ' . $clase_anexo; ?>" style="position: relative; overflow: hidden;">
+
                             <?php if ($esta_bloqueado): ?>
                                 <div class="bloqueo-overlay d-flex align-items-center justify-content-center" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(233, 236, 239, 0.7); z-index: 10;">
                                     <span class="badge bg-dark p-2 shadow">
@@ -190,6 +212,12 @@ $pedidos = $stmt->fetchAll();
                             <?php endif; ?>
 
                             <div class="card-body">
+                                <?php if ($es_anexo): ?>
+                                    <div class="alert alert-warning py-1 px-2 fw-bold text-center mb-3 animate__animated animate__flash">
+                                        <i class="fas fa-exclamation-circle me-2"></i>⚠️ ATENCIÓN: NUEVOS PRODUCTOS AGREGADOS (ANEXO)
+                                    </div>
+                                <?php endif; ?>
+
                                 <div class="row align-items-center <?php echo $esta_bloqueado ? 'opacity-50' : ''; ?>">
                                     <div class="col-md-8">
                                         <div class="d-flex align-items-center mb-2">
@@ -204,7 +232,7 @@ $pedidos = $stmt->fetchAll();
                                                 <?php echo $estado_badge[1]; ?>
                                             </span>
                                         </div>
-                                        
+
                                         <div class="row text-muted small">
                                             <div class="col-sm-4">
                                                 <strong>Mesero:</strong> <?php echo htmlspecialchars($pedido['mesero_nombre']); ?>
@@ -214,25 +242,25 @@ $pedidos = $stmt->fetchAll();
                                             </div>
                                         </div>
                                     </div>
-                                    
+
                                     <div class="col-md-4 text-end">
                                         <?php if ($pedido['estado'] === 'en_preparacion'): ?>
-                                            <button type="button" class="btn btn-success btn-sm" 
-                                                    <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
-                                                    onclick="cocinaManager.marcarComoListo(<?php echo $pedido['id']; ?>)">
+                                            <button type="button" class="btn btn-success btn-sm"
+                                                <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
+                                                onclick="cocinaManager.marcarComoListo(<?php echo $pedido['id']; ?>)">
                                                 <i class="fas fa-check me-1"></i>Marcar Listo
                                             </button>
                                         <?php else: ?>
                                             <button type="button" class="btn btn-warning btn-sm"
-                                                    <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
-                                                    onclick="cocinaManager.volverAPreparacion(<?php echo $pedido['id']; ?>)">
+                                                <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
+                                                onclick="cocinaManager.volverAPreparacion(<?php echo $pedido['id']; ?>)">
                                                 <i class="fas fa-undo me-1"></i>Volver a Preparar
                                             </button>
                                         <?php endif; ?>
-                                        
-                                        <button class="btn btn-info btn-sm ms-1" 
-                                                <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
-                                                onclick="cocinaManager.toggleDetalles(<?php echo $pedido['id']; ?>)">
+
+                                        <button class="btn btn-info btn-sm ms-1"
+                                            <?php echo $esta_bloqueado ? 'disabled' : ''; ?>
+                                            onclick="cocinaManager.toggleDetalles(<?php echo $pedido['id']; ?>)">
                                             <i class="fas fa-list me-1"></i>Detalles
                                         </button>
                                     </div>
@@ -254,11 +282,11 @@ $pedidos = $stmt->fetchAll();
                                     ");
                                     $stmt_detalle->execute([$pedido['id']]);
                                     $detalles = $stmt_detalle->fetchAll();
-                                    
+
                                     $pizzas = [];
                                     $bebidas = [];
                                     $current_pizza_index = -1;
-                                    
+
                                     foreach ($detalles as $detalle) {
                                         if ($detalle['categoria'] === 'Pizza Base') {
                                             $current_pizza_index++;
@@ -274,22 +302,22 @@ $pedidos = $stmt->fetchAll();
                                         }
                                     }
                                     ?>
-                                    
+
                                     <?php if (!empty($pizzas)): ?>
                                         <div class="mb-4">
                                             <h6 class="fw-bold border-bottom pb-2 mb-3 text-warning">
                                                 <i class="fas fa-pizza-slice me-2"></i>Pizzas del Pedido
                                             </h6>
-                                            
+
                                             <?php foreach ($pizzas as $index => $pizza): ?>
                                                 <div class="pizza-individual mb-3 p-3 border rounded bg-light">
                                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                                         <h6 class="fw-bold text-primary mb-0">
-                                                            Pizza <?php echo $index + 1; ?> - 
+                                                            Pizza <?php echo $index + 1; ?> -
                                                             <span class="badge bg-warning text-dark"><?php echo $pizza['tamanio']; ?></span>
                                                         </h6>
                                                     </div>
-                                                    
+
                                                     <?php if (!empty($pizza['ingredientes'])): ?>
                                                         <div class="ms-3">
                                                             <strong class="text-success small">Ingredientes:</strong>
@@ -306,7 +334,7 @@ $pedidos = $stmt->fetchAll();
                                             <?php endforeach; ?>
                                         </div>
                                     <?php endif; ?>
-                                    
+
                                     <?php if (!empty($bebidas)): ?>
                                         <div class="mb-3">
                                             <h6 class="fw-bold border-bottom pb-2 mb-3 text-info">
@@ -333,7 +361,7 @@ $pedidos = $stmt->fetchAll();
         <?php endif; ?> <?php if ($total_paginas > 1): ?>
             <nav aria-label="Navegación de pedidos" class="mt-4 d-flex justify-content-center">
                 <ul class="pagination">
-                    
+
                     <li class="page-item <?php echo ($pagina_actual <= 1) ? 'disabled' : ''; ?>">
                         <a class="page-link" href="tablero.php?pagina=<?php echo $pagina_actual - 1; ?>">Anterior</a>
                     </li>
@@ -362,4 +390,5 @@ $pedidos = $stmt->fetchAll();
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
     <script src="../js/cocina.js"></script>
 </body>
+
 </html>

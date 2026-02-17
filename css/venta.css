@@ -201,3 +201,212 @@ footer {
     margin-bottom: 10px;
     background: #f8f9fa;
 }
+
+/* =========================================
+   ESTILOS PARA GESTIÓN DE CLIENTES (PARA LLEVAR)
+   ========================================= */
+
+/* 1. Contenedor Principal de la Sección */
+.cliente-filter-container {
+    background: #ffffff;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    padding: 30px;
+    max-width: 750px; /* Un poco más ancho para que quepan bien los inputs */
+    margin: 20px auto;
+    border-top: 5px solid #ff9800; /* Naranja para diferenciar de "Mesa" */
+    animation: slideDown 0.4s ease-out;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.filter-header h3 {
+    color: #333;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+/* 2. Buscador y Lista de Resultados Flotante */
+.search-box-wrapper {
+    position: relative; /* Clave para que la lista flote respecto a esto */
+}
+
+.search-box-wrapper .input-group {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.search-box-wrapper input {
+    border: 1px solid #ddd;
+    padding: 12px;
+    font-size: 1.1rem;
+}
+
+.search-box-wrapper input:focus {
+    box-shadow: none;
+    border-color: #ff9800;
+}
+
+.autocomplete-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    z-index: 1050; /* Muy alto para tapar otros elementos */
+    max-height: 250px;
+    overflow-y: auto;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+}
+
+.result-item {
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f1f1;
+    transition: background 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.result-item:hover {
+    background: #fff3e0; /* Fondo naranja muy suave */
+}
+
+.result-item strong {
+    color: #333;
+    font-size: 1rem;
+}
+
+.result-item small {
+    color: #777;
+    background: #eee;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+}
+
+/* 3. Formulario Nuevo Cliente */
+.new-client-card {
+    background: #f8f9fa;
+    border: 2px dashed #cbd5e0;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 15px;
+    animation: fadeIn 0.3s;
+}
+
+/* 4. Carrusel de Clientes Frecuentes */
+.frequent-grid {
+    display: flex;
+    gap: 15px;
+    overflow-x: auto;
+    padding: 10px 5px;
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: #ff9800 #f1f1f1;
+}
+
+/* Scrollbar personalizado para Chrome/Safari */
+.frequent-grid::-webkit-scrollbar {
+    height: 8px;
+}
+.frequent-grid::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+.frequent-grid::-webkit-scrollbar-thumb {
+    background: #ffcc80;
+    border-radius: 4px;
+}
+.frequent-grid::-webkit-scrollbar-thumb:hover {
+    background: #ff9800;
+}
+
+.freq-card {
+    min-width: 140px;
+    background: white;
+    border: 1px solid #eaeaea;
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.freq-card:hover {
+    transform: translateY(-5px);
+    border-color: #ff9800;
+    box-shadow: 0 8px 15px rgba(255, 152, 0, 0.2);
+}
+
+.freq-card i {
+    color: #555;
+    margin-bottom: 8px;
+    transition: color 0.3s;
+}
+
+.freq-card:hover i {
+    color: #ff9800;
+}
+
+/* 5. Tarjeta de Cliente Seleccionado (Confirmación) */
+.selected-client-card {
+    background: #e8f5e9; /* Verde muy suave */
+    border: 1px solid #c8e6c9;
+    border-left: 5px solid #4caf50;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    margin-top: 20px;
+    animation: fadeIn 0.4s ease;
+}
+
+.selected-client-card .icon-box {
+    width: 55px;
+    height: 55px;
+    background: #fff;
+    color: #4caf50;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin-right: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.selected-client-card .client-data h4 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #2e7d32;
+    margin-bottom: 2px;
+}
+
+/* Botón Continuar */
+#btn-siguiente-menu {
+    transition: all 0.3s;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#btn-siguiente-menu:disabled {
+    background-color: #e0e0e0;
+    border-color: #e0e0e0;
+    color: #999;
+    cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

@@ -68,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $pdo->prepare("
         SELECT c.id, c.total, c.estado, c.tipo_servicio, c.mesa_id, c.fecha_creacion, c.editando,
-               cl.nombre as nombre_cliente
+        c.cliente_id,      
+        cl.nombre as nombre_cliente
         FROM comanda c
         LEFT JOIN cliente cl ON c.cliente_id = cl.id
         WHERE c.usuario_id = ? AND DATE(c.fecha_creacion) = CURDATE()
