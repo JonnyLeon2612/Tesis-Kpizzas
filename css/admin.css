@@ -1,148 +1,159 @@
+/* css/admin.css - Estilos Modernos del Panel de Administración */
 :root {
     --kpizzas-red: #D82626;
-    --kpizzas-dark: #343a40;
+    --kpizzas-red-dark: #b71c1c;
+    --kpizzas-red-light: #fff0f0;
+    --text-dark: #2c3e50;
+    --text-light: #6c757d;
+    --bg-main: #f4f6f9;
+    --bg-white: #ffffff;
+    --border-color: #e9ecef;
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
-.bg-kpizzas-red {
-    background-color: var(--kpizzas-red) !important;
+/* --- Tipografía y Base --- */
+body {
+    background-color: var(--bg-main);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--text-dark);
 }
 
+/* --- Navbar (Cabecera) --- */
+.bg-kpizzas-red, .navbar-dark {
+    background: linear-gradient(135deg, var(--kpizzas-red) 0%, var(--kpizzas-red-dark) 100%) !important;
+    box-shadow: 0 4px 15px rgba(216, 38, 38, 0.3);
+}
+
+.navbar-brand {
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+/* --- Botones --- */
 .btn-kpizzas-red {
     background-color: var(--kpizzas-red);
     border-color: var(--kpizzas-red);
     color: white;
+    border-radius: 8px;
+    padding: 8px 20px;
+    font-weight: 500;
+    transition: all 0.3s ease;
 }
 
 .btn-kpizzas-red:hover {
-    background-color: #A91E1E;
-    border-color: #A91E1E;
+    background-color: var(--kpizzas-red-dark);
+    border-color: var(--kpizzas-red-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(216, 38, 38, 0.3);
+    color: white;
 }
 
+/* --- Tarjetas del Dashboard (Cards) --- */
 .card {
-    border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s;
+    border: none;
+    border-radius: 16px;
+    background-color: var(--bg-white);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    overflow: hidden;
 }
 
 .card:hover {
     transform: translateY(-5px);
-}/* admin.css - Estilos generales del panel de administración */
-:root {
-    --kpizza-red: #d32f2f;
-    --kpizza-red-dark: #b71c1c;
-    --kpizza-orange: #ff9800;
-    --text-dark: #333333;
-    --text-light: #666666;
-    --bg-light: #f8f9fa;
-    --border-color: #dee2e6;
+    box-shadow: var(--shadow-md);
 }
 
-/* Estilos generales */
-body {
-    background-color: var(--bg-light);
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+.card-title {
     color: var(--text-dark);
-}
-
-.bg-red-kpizza {
-    background-color: var(--kpizza-red) !important;
-}
-
-.text-kpizza-red {
-    color: var(--kpizza-red) !important;
-}
-
-/* Header */
-.navbar-dark {
-    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%) !important;
-}
-
-.navbar-brand {
     font-weight: 700;
     font-size: 1.25rem;
+    margin-bottom: 1rem;
 }
 
-/* Sidebar */
+.card-text {
+    color: var(--text-light);
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+}
+
+/* Iconos flotantes en las tarjetas del Dashboard */
+.card-icon-wrapper {
+    width: 60px;
+    height: 60px;
+    background-color: var(--kpizzas-red-light);
+    color: var(--kpizzas-red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin: 0 auto 15px auto;
+    transition: all 0.3s ease;
+}
+
+.card:hover .card-icon-wrapper {
+    background-color: var(--kpizzas-red);
+    color: white;
+    transform: scale(1.1) rotate(5deg);
+}
+
+/* --- Sidebar (Menú Lateral) --- */
 .sidebar {
-    background-color: #fff;
-    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    background-color: var(--bg-white) !important;
+    border-right: 1px solid var(--border-color);
+    box-shadow: 2px 0 10px rgba(0,0,0,0.02);
     min-height: calc(100vh - 56px);
+    padding: 20px 10px;
+}
+
+.sidebar .nav-item {
+    margin-bottom: 8px;
 }
 
 .sidebar .nav-link {
-    color: var(--text-dark);
-    padding: 12px 15px;
-    border-radius: 5px;
-    margin-bottom: 2px;
-    transition: all 0.3s ease;
+    color: var(--text-light);
+    padding: 12px 20px;
+    border-radius: 10px;
     font-weight: 500;
-}
-
-.sidebar .nav-link:hover {
-    background-color: #e9ecef;
-    color: var(--kpizza-red);
-}
-
-.sidebar .nav-link.active {
-    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%);
-    color: white;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
 }
 
 .sidebar .nav-link i {
-    width: 20px;
-    text-align: center;
+    width: 25px;
+    font-size: 1.1rem;
+    margin-right: 10px;
+    transition: transform 0.3s ease;
 }
 
-/* Main Content */
+.sidebar .nav-link:hover {
+    background-color: var(--kpizzas-red-light);
+    color: var(--kpizzas-red);
+    transform: translateX(5px);
+}
+
+.sidebar .nav-link.active {
+    background: linear-gradient(135deg, var(--kpizzas-red) 0%, var(--kpizzas-red-dark) 100%);
+    color: white;
+    box-shadow: 0 4px 10px rgba(216, 38, 38, 0.2);
+}
+
+.sidebar .nav-link.active i {
+    color: white;
+}
+
+/* --- Layout Principal --- */
 .main-content {
-    background-color: var(--bg-light);
-    min-height: calc(100vh - 56px);
-    padding-top: 20px;
+    padding: 30px;
 }
 
-/* Utilidades */
-.border-bottom {
-    border-color: var(--border-color) !important;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .sidebar {
-        position: fixed;
-        top: 56px;
-        bottom: 0;
-        left: -100%;
-        z-index: 1000;
-        transition: left 0.3s ease;
-        width: 250px;
-    }
-    
-    .sidebar.show {
-        left: 0;
-    }
-    
-    .main-content {
-        margin-left: 0;
-    }
-}
-
-/* SweetAlert personalizado */
-.swal2-popup {
-    border-radius: 15px !important;
-}
-
-.sweetalert-custom .swal2-title {
-    color: var(--text-dark);
-}
-
-.swal2-confirm {
-    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%) !important;
-    border: none !important;
-    border-radius: 8px !important;
-}
-
-.swal2-cancel {
-    background: #6c757d !important;
-    border: none !important;
-    border-radius: 8px !important;
+/* --- Utilidades --- */
+footer {
+    background-color: var(--text-dark) !important;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
 }

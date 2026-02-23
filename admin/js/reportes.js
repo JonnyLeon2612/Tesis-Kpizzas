@@ -452,3 +452,179 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }, 5000);
 });
+
+// ==========================================
+// MÓDULO DE EXPORTACIÓN (EXCEL Y PDF)
+// ==========================================
+// MÓDULO DE EXPORTACIÓN PROFESIONAL (EXCEL Y PDF)
+// ==========================================
+
+// --- FUNCIÓN AUXILIAR: Obtener fechas del filtro ---
+function getFechasReporte() {
+    const inputDesde = document.querySelector('input[name="desde"]');
+    const inputHasta = document.querySelector('input[name="hasta"]');
+    
+    // Función para formatear de AAAA-MM-DD a DD/MM/AAAA
+    const formatFecha = (fechaStr) => {
+        if (!fechaStr) return 'N/A';
+        const p = fechaStr.split('-');
+        return `${p[2]}/${p[1]}/${p[0]}`;
+    };
+
+    const rawDesde = inputDesde ? inputDesde.value : '';
+    const rawHasta = inputHasta ? inputHasta.value : '';
+
+    return {
+        rawDesde: rawDesde, // Para el nombre del archivo (AAAA-MM-DD)
+        rawHasta: rawHasta,
+        formatDesde: formatFecha(rawDesde), // Para el texto del PDF (DD/MM/AAAA)
+        formatHasta: formatFecha(rawHasta)
+    };
+}
+
+// --- EXPORTAR A EXCEL (CON COLOR Y AUTO-ANCHO) ---
+window.exportarExcel = function(tableId, prefijoNombre) {
+    const tabla = document.getElementById(tableId);
+    if (!tabla) {
+        alert('Error: No se encontró la tabla para exportar');
+        return;
+    }
+    
+    // Generar nombre de archivo dinámico
+    const fechas = getFechasReporte();
+    const nombreArchivo = `Kpizzas_${prefijoNombre}_${fechas.rawDesde}_al_${fechas.rawHasta}`;
+    
+    // Convertir la tabla HTML a un libro de Excel
+    const wb = XLSX.utils.table_to_book(tabla, { sheet: "Reporte Kpizzas" });
+    const ws = wb.Sheets["Reporte Kpizzas"];
+    
+    if (ws['!ref']) {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        let colsWidths = []; 
+
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            let maxWidth = 12; 
+
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                const address = XLSX.utils.encode_cell({ r: R, c: C });
+                const cell = ws[address];
+                
+                if (!cell) continue;
+
+                // Cabecera: Rojo Kpizzas corporativo
+                if (R === 0) {
+                    cell.s = {
+                        fill: { fgColor: { rgb: "D82626" } },
+                        font: { color: { rgb: "FFFFFF" }, bold: true }
+                    };
+                }
+
+                // Auto-ajuste de columnas
+                if (cell.v) {
+                    let textLength = String(cell.v).length;
+                    if (R === 0) textLength += 3; // Extra para negritas
+                    if (textLength > maxWidth) maxWidth = textLength;
+                }
+            }
+            colsWidths.push({ wch: Math.round(maxWidth + 5) });
+        }
+        ws['!cols'] = colsWidths;
+    }
+    
+    // Descargar
+    XLSX.writeFile(wb, `${nombreArchivo}.xlsx`);
+};
+
+// --- EXPORTAR A PDF (FORMATO CORPORATIVO) ---
+window.exportarPDF = function(tableId, prefijoNombre, tituloReporte) {
+    const tabla = document.getElementById(tableId);
+    if (!tabla) {
+        alert('Error: No se encontró la tabla para exportar');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Datos dinámicos
+    const fechas = getFechasReporte();
+    const nombreArchivo = `Kpizzas_${prefijoNombre}_${fechas.rawDesde}_al_${fechas.rawHasta}`;
+    
+    const ahora = new Date();
+    const fechaImpresion = ahora.toLocaleDateString('es-VE');
+    const horaImpresion = ahora.toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'});
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const centerX = pageWidth / 2;
+
+    // 1. MEMBRETE: Logo / Nombre de Empresa (CENTRADO)
+    doc.setFontSize(22);
+    doc.setTextColor(216, 38, 38); // Rojo Kpizzas
+    doc.setFont("helvetica", "bold");
+    // Se pasa centerX como coordenada X, y la opción align: "center"
+    doc.text("Kpizza's", centerX, 20, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont("helvetica", "normal");
+    doc.text("Sistema de Gestión y Control", centerX, 25, { align: "center" });
+
+    // 2. TÍTULO DEL DOCUMENTO
+    doc.setFontSize(16);
+    doc.setTextColor(40, 40, 40);
+    doc.setFont("helvetica", "bold");
+    doc.text(tituloReporte.toUpperCase(), 14, 37);
+
+    // 3. METADATOS DEL REPORTE
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Período analizado: ${fechas.formatDesde} al ${fechas.formatHasta}`, 14, 43);
+    doc.text(`Generado el: ${fechaImpresion} a las ${horaImpresion}`, 14, 48);
+
+    // 4. LÍNEA SEPARADORA ELEGANTE
+    doc.setDrawColor(216, 38, 38); // Línea roja
+    doc.setLineWidth(0.5);
+    doc.line(14, 52, 196, 52);
+
+    // 5. GENERACIÓN DE LA TABLA
+    doc.autoTable({
+        html: `#${tableId}`,
+        startY: 58, // Empezar debajo de la línea
+        theme: 'grid',
+        styles: {
+            fontSize: 8,
+            cellPadding: 3,
+            font: "helvetica"
+        },
+        headStyles: {
+            fillColor: [216, 38, 38], // Rojo
+            textColor: 255,
+            fontStyle: 'bold',
+            halign: 'center'
+        },
+        alternateRowStyles: {
+            fillColor: [248, 249, 250] // Gris muy claro
+        },
+        
+        // 6. PIE DE PÁGINA PROFESIONAL EN CADA PÁGINA
+        didDrawPage: function (data) {
+            const pageSize = doc.internal.pageSize;
+            const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+            
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "italic");
+            doc.setTextColor(150, 150, 150);
+            
+            // Texto Confidencial a la izquierda
+            doc.text("Reporte Confidencial - Solo Uso Interno", data.settings.margin.left, pageHeight - 10);
+            
+            // Número de página a la derecha
+            const pageNumberStr = "Página " + doc.internal.getNumberOfPages();
+            doc.text(pageNumberStr, pageSize.width - data.settings.margin.right - 20, pageHeight - 10);
+        }
+    });
+
+    // 7. DESCARGAR ARCHIVO
+    doc.save(`${nombreArchivo}.pdf`);
+};

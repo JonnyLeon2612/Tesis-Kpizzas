@@ -11,9 +11,11 @@ require_role('admin');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kpizza's - Administración</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="../css/admin.css" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light d-flex flex-column min-vh-100">
+    
     <nav class="navbar navbar-expand-lg navbar-dark bg-kpizzas-red">
         <div class="container">
             <a class="navbar-brand fw-bold" href="#">Kpizza's Administración</a>
@@ -27,60 +29,68 @@ require_role('admin');
         </div>
     </nav>
 
-    <div class="container my-4">
-        <h1 class="text-center mb-4">Panel de Administración</h1>
+    <div class="container my-5">
+        <h1 class="text-center mb-5 fw-bold text-dark">Panel de Administración</h1>
 
-        <!-- Fila Existente -->
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center p-3">
+                    <div class="card-body d-flex flex-column">
+                        <div class="card-icon-wrapper">
+                            <i class="fas fa-users"></i>
+                        </div>
                         <h5 class="card-title">Gestión de Usuarios</h5>
-                        <p class="card-text">Administra los usuarios del sistema: meseros, caja, cocina y administradores.</p>
-                        <!-- CAMBIO: Ruta actualizada a la subcarpeta -->
-                        <a href="administrar/usuarios.php" class="btn btn-kpizzas-red">Gestionar Usuarios</a>
+                        <p class="card-text flex-grow-1 text-muted small">Administra los usuarios del sistema: meseros, caja, cocina y administradores.</p>
+                        <a href="administrar/usuarios.php" class="btn btn-kpizzas-red w-100 mt-auto">Gestionar Usuarios</a>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center p-3">
+                    <div class="card-body d-flex flex-column">
+                        <div class="card-icon-wrapper">
+                            <i class="fas fa-box-open"></i>
+                        </div>
                         <h5 class="card-title">Gestión de Productos</h5>
-                        <p class="card-text">Administra los productos: pizzas, ingredientes, bebidas y adicionales.</p>
-                        <!-- CAMBIO: Ruta actualizada a la subcarpeta -->
-                        <a href="administrar/productos.php" class="btn btn-kpizzas-red">Gestionar Productos</a>
+                        <p class="card-text flex-grow-1 text-muted small">Administra los productos: pizzas, ingredientes, bebidas y adicionales.</p>
+                        <a href="administrar/productos.php" class="btn btn-kpizzas-red w-100 mt-auto">Gestionar Productos</a>
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <!-- Nueva Fila -->
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                       <h5 class="card-title">Análisis de Rentabilidad</h5>
-        <p class="card-text">Analiza ventas, costos y la rentabilidad neta del negocio.</p>
-            <!-- CAMBIO: Ruta actualizada a reportes -->
-            <a href="administrar/reportes.php" class="btn btn-kpizzas-red">Ver Reportes</a>
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center p-3">
+                    <div class="card-body d-flex flex-column">
+                        <div class="card-icon-wrapper">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h5 class="card-title">Análisis de Rentabilidad</h5>
+                        <p class="card-text flex-grow-1 text-muted small">Analiza ventas, costos y la rentabilidad neta del negocio.</p>
+                        <a href="administrar/reportes.php" class="btn btn-kpizzas-red w-100 mt-auto">Ver Reportes</a>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100 text-center p-3">
+                    <div class="card-body d-flex flex-column">
+                        <div class="card-icon-wrapper">
+                            <i class="fas fa-exchange-alt"></i>
+                        </div>
                         <h5 class="card-title">Precio del Dólar</h5>
-                        <p class="card-text">Actualiza el precio del dólar del día para el cálculo de precios.</p>
-                        <!-- CAMBIO: Ruta actualizada a la subcarpeta -->
-                        <a href="administrar/dolar.php" class="btn btn-kpizzas-red">Actualizar Precio</a>
+                        <p class="card-text flex-grow-1 text-muted small">Actualiza el precio del dólar del día para el cálculo de precios.</p>
+                        <a href="administrar/dolar.php" class="btn btn-kpizzas-red w-100 mt-auto">Actualizar Precio</a>
                     </div>
                 </div>
             </div>
         </div>  
     </div>
-   <footer class="bg-dark text-white text-center py-3 mt-auto">
+
+    <footer class="bg-dark text-white text-center py-3 mt-auto">
         <i class="fas fa-pizza-slice me-1"></i>Kpizza's © <?php echo date('Y'); ?> - Sistema de Gestión
     </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
