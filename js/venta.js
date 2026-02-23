@@ -41,6 +41,8 @@ class VentaManager {
         this.cargarClientesFrecuentes();
 
         setInterval(() => this.verificarPedidosListos(), 5000); 
+
+        setInterval(() => this.cargarHistorialPedidos(), 5000);
     }
 
     setupEventListeners() {
@@ -348,14 +350,42 @@ backToTables() {
         if(form) form.style.display = (form.style.display === 'none') ? 'block' : 'none';
     }
 
-    guardarNuevoCliente() {
-        const nombre = document.getElementById('new-nombre').value;
-        const cedula = document.getElementById('new-cedula').value;
-        const telefono = document.getElementById('new-telefono').value;
-        const direccion = document.getElementById('new-direccion').value;
+guardarNuevoCliente() {
+        const nombre = document.getElementById('new-nombre').value.trim();
+        const cedula = document.getElementById('new-cedula').value.trim();
+        let telefono = document.getElementById('new-telefono').value.trim();
+        const direccion = document.getElementById('new-direccion').value.trim();
 
-        if (!nombre) return Swal.fire('Error', "El nombre es obligatorio", 'warning');
+        // Expresión regular para validar estricto (solo números)
+        const soloNumeros = /^[0-9]+$/;
 
+        // --- VALIDACIONES FRONTEND ---
+        if (!nombre || nombre.length < 3) {
+            return Swal.fire('Atención', "El nombre es obligatorio y debe tener al menos 3 letras.", 'warning');
+        }
+
+        // Validación de Cédula
+        if (!cedula || cedula.length < 6) {
+            return Swal.fire('Atención', "Ingrese una cédula válida (mínimo 6 dígitos).", 'warning');
+        }
+        if (!soloNumeros.test(cedula)) {
+            return Swal.fire('Error', "La cédula debe contener solo numeros.<br><small>(No incluya puntos, letras ni la 'V-')</small>", 'error');
+        }
+
+        // Validación de Teléfono (limpiamos guiones por si acaso y luego verificamos que queden puros números)
+        telefono = telefono.replace(/[-\s+]/g, ''); // Quita espacios y guiones automáticamente
+        if (!telefono || telefono.length < 10) {
+            return Swal.fire('Atención', "Ingrese un número de teléfono válido.", 'warning');
+        }
+        if (!soloNumeros.test(telefono)) {
+            return Swal.fire('Error', "el telefono debe contener solo numeros.", 'error');
+        }
+                
+        if (!direccion || direccion.length < 5) {
+            return Swal.fire('Atención', "La dirección es obligatoria su registro.", 'warning');
+        }
+
+        // --- ENVÍO AL BACKEND ---
         fetch('guardar_cliente.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -382,8 +412,17 @@ backToTables() {
                 
                 this.showToast('Cliente registrado correctamente', 'success');
             } else {
-                Swal.fire('Error', res.message, 'error');
+                // Muestra los errores que vienen desde PHP
+                Swal.fire({
+                    title: 'Verifique los datos',
+                    html: res.message, 
+                    icon: 'error'
+                });
             }
+        })
+        .catch(error => {
+            console.error(error);
+            Swal.fire('Error', 'Hubo un problema de conexión al guardar el cliente.', 'error');
         });
     }
 

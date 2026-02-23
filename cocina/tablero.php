@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comanda_id'])) {
     // Si el estado enviado es válido...
     if (in_array($estado, $estados_permitidos)) {
         // Prepara y ejecuta la actualización en la base de datos.
-        $stmt = $pdo->prepare("UPDATE comanda SET estado = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE comanda SET estado = ?, es_anexo = 0 WHERE id = ?");
         $stmt->execute([$estado, $comanda_id]);
     }
 
@@ -83,6 +83,7 @@ $stmt = $pdo->prepare("
         c.fecha_creacion, 
         c.tipo_servicio,
         c.editando,
+        c.es_anexo,
         u.nombre as mesero_nombre,
         COALESCE(m.numero, 0) as mesa_numero /* COALESCE para manejar NULOs (pedidos para llevar) */
     FROM comanda c
@@ -118,7 +119,7 @@ $pedidos = $stmt->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="../css/cocina.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
-    <meta http-equiv="refresh" content="15">
+    <meta http-equiv="refresh" content="5">
 </head>
 
 <body class="bg-light">
@@ -175,21 +176,10 @@ $pedidos = $stmt->fetchAll();
                     $esta_bloqueado = (isset($pedido['editando']) && $pedido['editando'] == 1);
                     $clase_bloqueo = $esta_bloqueado ? 'pedido-bloqueado border-danger' : '';
 
-                    // --- NUEVO: Lógica para detectar ANEXO (Add-on) ---
-                    $es_anexo = false;
-                    try {
-                        $hora_creacion = new DateTime($pedido['fecha_creacion']);
-                        $ahora = new DateTime();
-                        $diferencia = $ahora->diff($hora_creacion);
-
-                        // Si el pedido tiene más de 30 minutos de antigüedad y está en preparación, es un anexo
-                        // (Ajusta los 30 minutos según el ritmo de tu restaurante)
-                        if (($diferencia->i > 30 || $diferencia->h > 0 || $diferencia->d > 0) && $pedido['estado'] === 'en_preparacion') {
-                            $es_anexo = true;
-                        }
-                    } catch (Exception $e) {
-                    }
-
+                    // --- NUEVA LÓGICA EXACTA PARA ANEXOS ---
+                    // Leemos el valor "es_anexo" directamente desde la base de datos
+                    $es_anexo = (isset($pedido['es_anexo']) && $pedido['es_anexo'] == 1 && $pedido['estado'] === 'en_preparacion');
+                    
                     // Estilo especial para Anexo (Borde amarillo grueso)
                     $clase_anexo = $es_anexo ? 'border-warning border-4' : '';
                     // --------------------------------------------------

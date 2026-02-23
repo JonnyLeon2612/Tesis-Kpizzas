@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             // 1. Actualizamos el total sumando lo nuevo a lo viejo.
             // 2. REBOTE: Cambiamos estado a 'en_preparacion' para que Cocina lo vea.
             // 3. Quitamos bandera de edición.
-            $sql_update = "UPDATE comanda SET total = total + ?, estado = 'en_preparacion', editando = 0 WHERE id = ?";
+            $sql_update = "UPDATE comanda SET total = total + ?, estado = 'en_preparacion', editando = 0, es_anexo = 1 WHERE id = ?";
             $stmt_update = $pdo->prepare($sql_update);
             $stmt_update->execute([$total_pedido, $adicion_id]);
             
@@ -332,7 +332,7 @@ $mesas = $stmt_mesas->fetchAll();
                         <input type="text" id="new-nombre" class="form-control" placeholder="Nombre Completo *">
                     </div>
                     <div class="col-md-6">
-                        <input type="text" id="new-cedula" class="form-control" placeholder="Cédula/DNI">
+                        <input type="text" id="new-cedula" class="form-control" placeholder="Cédula">
                     </div>
                     <div class="col-md-6">
                         <input type="text" id="new-telefono" class="form-control" placeholder="Teléfono">
