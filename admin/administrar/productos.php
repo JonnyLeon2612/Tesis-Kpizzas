@@ -3,16 +3,19 @@ require_once __DIR__ . '/../../auth/middleware.php';
 require_once __DIR__ . '/../../config/db.php';
 require_role('admin');
 
-class ProductoController {
+class ProductoController
+{
     private $pdo;
     private $mensaje;
     private $error;
 
-    public function __construct($pdo) {
+    public function __construct($pdo)
+    {
         $this->pdo = $pdo;
     }
 
-    public function crearProducto($datos) {
+    public function crearProducto($datos)
+    {
         try {
             $categoria_id = $datos['categoria_id'];
             $nombre = trim($datos['nombre']);
@@ -20,23 +23,23 @@ class ProductoController {
             $precio_pequena = $datos['precio_pequena'] ?? 0;
             $precio_mediana = $datos['precio_mediana'] ?? 0;
             $precio_familiar = $datos['precio_familiar'] ?? 0;
-            
+
             if (empty($nombre) || empty($categoria_id)) {
                 $this->error = "Los campos nombre y categoría son obligatorios";
                 return false;
             }
-            
+
             $stmt = $this->pdo->prepare("SELECT id FROM producto WHERE nombre = ?");
             $stmt->execute([$nombre]);
-            
+
             if ($stmt->fetch()) {
                 $this->error = "Ya existe un producto con este nombre";
                 return false;
             }
-            
+
             $stmt = $this->pdo->prepare("INSERT INTO producto (categoria_id, nombre, descripcion, precio_pequena, precio_mediana, precio_familiar, estado) VALUES (?, ?, ?, ?, ?, ?, 'activo')");
             $stmt->execute([$categoria_id, $nombre, $descripcion, $precio_pequena, $precio_mediana, $precio_familiar]);
-            
+
             $this->mensaje = "Producto creado exitosamente";
             return true;
         } catch (Exception $e) {
@@ -45,7 +48,8 @@ class ProductoController {
         }
     }
 
-    public function actualizarProducto($datos) {
+    public function actualizarProducto($datos)
+    {
         try {
             $id = $datos['id'];
             $categoria_id = $datos['categoria_id'];
@@ -55,15 +59,15 @@ class ProductoController {
             $precio_mediana = $datos['precio_mediana'] ?? 0;
             $precio_familiar = $datos['precio_familiar'] ?? 0;
             $estado = $datos['estado'];
-            
+
             if (empty($nombre) || empty($categoria_id)) {
                 $this->error = "Los campos nombre y categoría son obligatorios";
                 return false;
             }
-            
+
             $stmt = $this->pdo->prepare("UPDATE producto SET categoria_id = ?, nombre = ?, descripcion = ?, precio_pequena = ?, precio_mediana = ?, precio_familiar = ?, estado = ? WHERE id = ?");
             $stmt->execute([$categoria_id, $nombre, $descripcion, $precio_pequena, $precio_mediana, $precio_familiar, $estado, $id]);
-            
+
             $this->mensaje = "Producto actualizado exitosamente";
             return true;
         } catch (Exception $e) {
@@ -72,19 +76,30 @@ class ProductoController {
         }
     }
 
-    public function eliminarProducto($id) {
+    public function eliminarProducto($id)
+    {
         try {
-            $stmt = $this->pdo->prepare("DELETE FROM producto WHERE id = ?");
+            // Primero consultamos el estado actual
+            $stmt = $this->pdo->prepare("SELECT estado FROM producto WHERE id = ?");
             $stmt->execute([$id]);
-            $this->mensaje = "Producto eliminado exitosamente";
+            $producto = $stmt->fetch();
+
+            // Si está activo lo ponemos inactivo, si está inactivo lo activamos
+            $nuevo_estado = ($producto['estado'] == 'activo') ? 'inactivo' : 'activo';
+
+            $stmt = $this->pdo->prepare("UPDATE producto SET estado = ? WHERE id = ?");
+            $stmt->execute([$nuevo_estado, $id]);
+
+            $this->mensaje = "El estado del producto ha sido actualizado a: " . $nuevo_estado;
             return true;
         } catch (Exception $e) {
-            $this->error = "Error al eliminar el producto: " . $e->getMessage();
+            $this->error = "Error al cambiar el estado: " . $e->getMessage();
             return false;
         }
     }
 
-    public function obtenerProductosPaginados($busqueda, $offset, $limit) {
+    public function obtenerProductosPaginados($busqueda, $offset, $limit)
+    {
         $sql_busqueda = "WHERE (p.nombre LIKE ? OR cp.nombre LIKE ?)";
         $params = ["%{$busqueda}%", "%{$busqueda}%", $limit, $offset];
 
@@ -100,7 +115,8 @@ class ProductoController {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contarProductos($busqueda) {
+    public function contarProductos($busqueda)
+    {
         $sql_busqueda = "WHERE (p.nombre LIKE ? OR cp.nombre LIKE ?)";
         $params = ["%{$busqueda}%", "%{$busqueda}%"];
 
@@ -114,22 +130,26 @@ class ProductoController {
         return $stmt->fetchColumn();
     }
 
-    public function obtenerProducto($id) {
+    public function obtenerProducto($id)
+    {
         $stmt = $this->pdo->prepare("SELECT * FROM producto WHERE id = ?");
         $stmt->execute([$id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    public function obtenerCategorias() {
+    public function obtenerCategorias()
+    {
         $stmt = $this->pdo->query("SELECT * FROM categoria_producto ORDER BY nombre");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getMensaje() {
+    public function getMensaje()
+    {
         return $this->mensaje;
     }
 
-    public function getError() {
+    public function getError()
+    {
         return $this->error;
     }
 }
@@ -179,6 +199,7 @@ $error = $controller->getError();
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -188,7 +209,20 @@ $error = $controller->getError();
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
     <link href="../../css/admin.css" rel="stylesheet">
     <link href="../css/productos.css" rel="stylesheet">
+    <style>
+        /* Estilo simple para la paginación activa en rojo */
+        .pagination .page-link {
+            color: #dc3545;
+        }
+
+        .pagination .page-item.active .page-link {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            color: white;
+        }
+    </style>
 </head>
+
 <body>
     <div class="container-fluid">
         <div class="row">
@@ -212,7 +246,7 @@ $error = $controller->getError();
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
-                
+
                 <?php if ($error): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <i class="fas fa-exclamation-circle me-2"></i> <?php echo $error; ?>
@@ -233,13 +267,13 @@ $error = $controller->getError();
                             <?php if ($producto_editar): ?>
                                 <input type="hidden" name="id" value="<?php echo $producto_editar['id']; ?>">
                             <?php endif; ?>
-                            
+
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="nombre" class="form-label">Nombre del Producto <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" id="nombre" name="nombre" 
-                                           value="<?php echo $producto_editar ? htmlspecialchars($producto_editar['nombre']) : ''; ?>" 
-                                           required>
+                                    <input type="text" class="form-control" id="nombre" name="nombre"
+                                        value="<?php echo $producto_editar ? htmlspecialchars($producto_editar['nombre']) : ''; ?>"
+                                        required>
                                     <div class="invalid-feedback">
                                         Por favor ingresa el nombre del producto.
                                     </div>
@@ -249,7 +283,7 @@ $error = $controller->getError();
                                     <select class="form-select" id="categoria_id" name="categoria_id" required>
                                         <option value="">Seleccionar Categoría</option>
                                         <?php foreach ($categorias as $categoria): ?>
-                                            <option value="<?php echo $categoria['id']; ?>" 
+                                            <option value="<?php echo $categoria['id']; ?>"
                                                 data-nombre="<?php echo htmlspecialchars($categoria['nombre']); ?>"
                                                 <?php echo ($producto_editar && $producto_editar['categoria_id'] == $categoria['id']) ? 'selected' : ''; ?>>
                                                 <?php echo htmlspecialchars($categoria['nombre']); ?>
@@ -261,7 +295,7 @@ $error = $controller->getError();
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="row">
                                 <div class="col-12 mb-3">
                                     <label for="descripcion" class="form-label">Descripción</label>
@@ -272,36 +306,36 @@ $error = $controller->getError();
                             <div id="campos-precios-pizza" class="row">
                                 <div class="col-md-4 mb-3">
                                     <label for="precio_pequena" class="form-label">Precio Pequeña ($)</label>
-                                    <input type="number" class="form-control precio-input" id="precio_pequena" name="precio_pequena" 
-                                           value="<?php echo $producto_editar ? $producto_editar['precio_pequena'] : '0.00'; ?>" 
-                                           step="0.01" min="0">
+                                    <input type="number" class="form-control precio-input" id="precio_pequena" name="precio_pequena"
+                                        value="<?php echo $producto_editar ? $producto_editar['precio_pequena'] : '0.00'; ?>"
+                                        step="0.01" min="0">
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <label for="precio_mediana" class="form-label">Precio Mediana ($)</label>
-                                    <input type="number" class="form-control precio-input" id="precio_mediana" name="precio_mediana" 
-                                           value="<?php echo $producto_editar ? $producto_editar['precio_mediana'] : '0.00'; ?>" 
-                                           step="0.01" min="0">
+                                    <input type="number" class="form-control precio-input" id="precio_mediana" name="precio_mediana"
+                                        value="<?php echo $producto_editar ? $producto_editar['precio_mediana'] : '0.00'; ?>"
+                                        step="0.01" min="0">
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <label for="precio_familiar" class="form-label">Precio Familiar ($)</label>
-                                    <input type="number" class="form-control precio-input" id="precio_familiar" name="precio_familiar" 
-                                           value="<?php echo $producto_editar ? $producto_editar['precio_familiar'] : '0.00'; ?>" 
-                                           step="0.01" min="0">
+                                    <input type="number" class="form-control precio-input" id="precio_familiar" name="precio_familiar"
+                                        value="<?php echo $producto_editar ? $producto_editar['precio_familiar'] : '0.00'; ?>"
+                                        step="0.01" min="0">
                                 </div>
                             </div>
-                            
+
                             <?php if ($producto_editar): ?>
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="estado" class="form-label">Estado <span class="text-danger">*</span></label>
-                                    <select class="form-select" id="estado" name="estado" required>
-                                        <option value="activo" <?php echo ($producto_editar && $producto_editar['estado'] == 'activo') ? 'selected' : ''; ?>>Activo</option>
-                                        <option value="inactivo" <?php echo ($producto_editar && $producto_editar['estado'] == 'inactivo') ? 'selected' : ''; ?>>Inactivo</option>
-                                    </select>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="estado" class="form-label">Estado <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="estado" name="estado" required>
+                                            <option value="activo" <?php echo ($producto_editar && $producto_editar['estado'] == 'activo') ? 'selected' : ''; ?>>Activo</option>
+                                            <option value="inactivo" <?php echo ($producto_editar && $producto_editar['estado'] == 'inactivo') ? 'selected' : ''; ?>>Inactivo</option>
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
                             <?php endif; ?>
-                            
+
                             <div class="d-flex justify-content-between mt-4">
                                 <?php if ($producto_editar): ?>
                                     <button type="submit" name="actualizar_producto" class="btn btn-success">
@@ -329,9 +363,9 @@ $error = $controller->getError();
                             <div class="row g-3">
                                 <div class="col-md-10">
                                     <label for="buscar" class="form-label">Buscar Producto o Categoría</label>
-                                    <input type="text" class="form-control" id="buscar" name="buscar" 
-                                           value="<?php echo htmlspecialchars($busqueda); ?>" 
-                                           placeholder="Ej: Pepperoni, Bebida, etc...">
+                                    <input type="text" class="form-control" id="buscar" name="buscar"
+                                        value="<?php echo htmlspecialchars($busqueda); ?>"
+                                        placeholder="Ej: Pepperoni, Bebida, etc...">
                                 </div>
                                 <div class="col-md-2 d-flex align-items-end">
                                     <button type="submit" class="btn btn-primary w-100">
@@ -388,11 +422,12 @@ $error = $controller->getError();
                                                         <a href="?editar=<?php echo $producto['id']; ?>&<?php echo $query_string_http; ?>" class="btn btn-warning" title="Editar">
                                                             <i class="fas fa-edit"></i>
                                                         </a>
-                                                        <a href="?eliminar=<?php echo $producto['id']; ?>&<?php echo $query_string_http; ?>" 
-                                                           class="btn btn-danger btn-eliminar" 
-                                                           title="Eliminar"
-                                                           data-producto="<?php echo htmlspecialchars($producto['nombre']); ?>">
-                                                            <i class="fas fa-trash"></i>
+                                                        <a href="?eliminar=<?php echo $producto['id']; ?>&<?php echo $query_string_http; ?>"
+                                                            class="btn <?php echo $producto['estado'] == 'activo' ? 'btn-danger' : 'btn-success'; ?> btn-eliminar"
+                                                            title="<?php echo $producto['estado'] == 'activo' ? 'Desactivar' : 'Activar'; ?>"
+                                                            data-producto="<?php echo htmlspecialchars($producto['nombre']); ?>"
+                                                            data-estado="<?php echo $producto['estado']; ?>">
+                                                            <i class="fas <?php echo $producto['estado'] == 'activo' ? 'fa-eye-slash' : 'fa-check'; ?>"></i>
                                                         </a>
                                                     </div>
                                                 </td>
@@ -403,7 +438,7 @@ $error = $controller->getError();
                             </div>
                         <?php else: ?>
                             <div class="alert alert-info text-center">
-                                <i class="fas fa-info-circle me-2"></i> 
+                                <i class="fas fa-info-circle me-2"></i>
                                 <?php if (!empty($busqueda)): ?>
                                     No se encontraron productos con el término "<?php echo htmlspecialchars($busqueda); ?>".
                                 <?php else: ?>
@@ -440,7 +475,8 @@ $error = $controller->getError();
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
-    
+
     <script src="../js/productos.js"></script>
 </body>
+
 </html>

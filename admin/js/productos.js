@@ -119,25 +119,25 @@ class ProductosManager {
         campo.classList.remove('is-valid', 'is-invalid');
     }
 
-    confirmarEliminacion(boton) {
+confirmarEliminacion(boton) {
         const nombreProducto = boton.getAttribute('data-producto');
+        const estadoActual = boton.getAttribute('data-estado');
         const url = boton.getAttribute('href');
+        
+        const Titulo = estadoActual === 'activo' ? '¿Desactivar Producto?' : '¿Activar Producto?';
+        const TextoBoton = estadoActual === 'activo' ? 'Sí, desactivar' : 'Sí, activar';
+        const ColorBoton = estadoActual === 'activo' ? '#d33' : '#28a745';
 
         Swal.fire({
-            title: '¿Eliminar Producto?',
-            html: `¿Estás seguro de que deseas eliminar el producto <strong>"${nombreProducto}"</strong>?<br><br>
-                  <span class="text-danger">Esta acción no se puede deshacer.</span>`,
-            icon: 'warning',
+            title: Titulo,
+            html: `¿Deseas cambiar el estado de <strong>"${nombreProducto}"</strong>?<br><br><small class="text-muted">Esto afectará la visibilidad en el menú del mesero.</small>`,
+            icon: 'question',
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, eliminar',
+            confirmButtonColor: ColorBoton,
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: TextoBoton,
             cancelButtonText: 'Cancelar',
-            backdrop: true,
-            allowOutsideClick: false,
-            customClass: {
-                popup: 'sweetalert-custom'
-            }
+            reverseButtons: true
         }).then((result) => {
             if (result.isConfirmed) {
                 this.procesarEliminacion(url);
@@ -147,8 +147,8 @@ class ProductosManager {
 
     procesarEliminacion(url) {
         Swal.fire({
-            title: 'Eliminando producto...',
-            text: 'Por favor espere',
+            title: 'Actualizando estado...',
+            text: 'Por favor espere un momento',
             icon: 'info',
             allowOutsideClick: false,
             showConfirmButton: false,
@@ -157,12 +157,11 @@ class ProductosManager {
             }
         });
 
-        // Simular redirección (en una aplicación real, esto sería una petición AJAX)
-        setTimeout(() => {
-            window.location.href = url;
-        }, 1000);
+        // Forzamos el viaje a la URL para que el PHP ejecute el UPDATE
+        window.location.href = url;
     }
 
+    // Estas funciones ahora pintan las alertas bonitas de SweetAlert
     mostrarError(mensaje) {
         Swal.fire({
             title: 'Error',
@@ -184,11 +183,12 @@ class ProductosManager {
     }
 
     autoHideAlerts() {
+        // Esta función cierra las alertas de Bootstrap (las de arriba del formulario) solas después de 5 seg
         setTimeout(() => {
             const alerts = document.querySelectorAll('.alert');
             alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+                const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+                if (bsAlert) bsAlert.close();
             });
         }, 5000);
     }

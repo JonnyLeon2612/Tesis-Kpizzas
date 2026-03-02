@@ -1,29 +1,86 @@
+/* admin/css/usuarios.css - Estilo Idéntico a Productos */
 :root {
-    --kpizzas-red: #D82626;
-    --kpizzas-dark: #343a40;
+    --kpizza-red: #d32f2f;
+    --kpizza-red-dark: #b71c1c;
+    --kpizza-red-light: #fff5f5;
+    --text-dark: #2c3e50;
+    --bg-light: #f4f7f6;
+    --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.08);
 }
 
-.bg-kpizzas-red {
-    background-color: var(--kpizzas-red) !important;
+body {
+    background: linear-gradient(135deg, #f4f7f6 0%, #e9ecef 100%);
+    color: var(--text-dark);
 }
 
-.btn-kpizzas-red {
-    background-color: var(--kpizzas-red);
-    border-color: var(--kpizzas-red);
-    color: white;
-}
-
-.btn-kpizzas-red:hover {
-    background-color: #A91E1E;
-    border-color: #A91E1E;
-}
-
+/* --- CARDS MODERNAS --- */
 .card {
-    border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s;
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: var(--shadow-soft) !important;
+    background: rgba(255, 255, 255, 0.95);
+    transition: all 0.4s ease;
+    margin-bottom: 25px;
 }
 
 .card:hover {
     transform: translateY(-5px);
+}
+
+.card-header {
+    background: linear-gradient(135deg, var(--kpizza-red) 0%, var(--kpizza-red-dark) 100%) !important;
+    color: white !important;
+    border-radius: 16px 16px 0 0 !important;
+    padding: 18px 25px !important;
+    font-weight: 700;
+}
+
+/* --- TABLA FLOTANTE IDENTICA A PRODUCTOS --- */
+.table {
+    border-collapse: separate;
+    border-spacing: 0 10px; /* Crea el efecto de filas separadas */
+}
+
+.table thead th {
+    background-color: #d32f2f !important; /* Cabecera oscura elegante */
+    color: white !important;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    border: none;
+    padding: 15px !important;
+}
+
+.table tbody tr {
+    background-color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: all 0.3s ease;
+}
+
+.table tbody tr:hover {
+    transform: scale(1.01);
+    background-color: var(--kpizza-red-light) !important;
+}
+
+.table td {
+    border: none;
+    padding: 15px !important;
+    vertical-align: middle;
+}
+
+/* Bordes redondeados para las filas de la tabla */
+.table tbody tr td:first-child { border-radius: 12px 0 0 12px; }
+.table tbody tr td:last-child { border-radius: 0 12px 12px 0; }
+
+/* --- BOTONES Y BADGES --- */
+.btn {
+    border-radius: 10px;
+    font-weight: 700;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.badge {
+    padding: 8px 15px;
+    border-radius: 50px;
+    font-weight: 800;
 }

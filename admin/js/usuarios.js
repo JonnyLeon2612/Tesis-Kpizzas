@@ -1,5 +1,5 @@
 /**
- * usuarios.js - Funcionalidades para gestión de usuarios
+ * usuarios.js - Funcionalidades corregidas para gestión de usuarios
  * Kpizza's Admin Panel
  */
 
@@ -16,11 +16,12 @@ class UsuariosManager {
     }
 
     setupEventListeners() {
-        // Confirmación antes de eliminar usuario
+        // Confirmación antes de cambiar estado (Soft Delete)
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-eliminar')) {
+            const boton = e.target.closest('.btn-eliminar');
+            if (boton) {
                 e.preventDefault();
-                this.confirmarEliminacion(e.target.closest('.btn-eliminar'));
+                this.confirmarEliminacion(boton);
             }
         });
 
@@ -59,18 +60,9 @@ class UsuariosManager {
             }
         });
 
-        // Validar contraseña para nuevos usuarios
-        const contrasena = document.getElementById('contrasena');
-        const estaEditando = document.querySelector('input[name="id"]');
-        
-        if (!estaEditando && contrasena.value.length < 6) {
-            this.marcarInvalido(contrasena, 'La contraseña debe tener al menos 6 caracteres');
-            esValido = false;
-        }
-
-        // Validar nombre de usuario
+        // Validar nombre de usuario (sin espacios)
         const usuario = document.getElementById('usuario');
-        if (usuario.value.includes(' ')) {
+        if (usuario && usuario.value.includes(' ')) {
             this.marcarInvalido(usuario, 'El nombre de usuario no puede contener espacios');
             esValido = false;
         }
@@ -85,14 +77,7 @@ class UsuariosManager {
             return false;
         }
 
-        if (campo.type === 'email' && campo.value) {
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(campo.value)) {
-                this.marcarInvalido(campo, 'Por favor ingresa un email válido');
-                return false;
-            }
-        }
-
+        // Validación mínima de contraseña
         if (campo.id === 'contrasena' && campo.value.length > 0 && campo.value.length < 6) {
             this.marcarInvalido(campo, 'La contraseña debe tener al menos 6 caracteres');
             return false;
@@ -105,8 +90,6 @@ class UsuariosManager {
     marcarInvalido(campo, mensaje) {
         campo.classList.remove('is-valid');
         campo.classList.add('is-invalid');
-        
-        // Mostrar mensaje de error
         let feedback = campo.parentNode.querySelector('.invalid-feedback');
         if (!feedback) {
             feedback = document.createElement('div');
@@ -119,37 +102,34 @@ class UsuariosManager {
     marcarValido(campo) {
         campo.classList.remove('is-invalid');
         campo.classList.add('is-valid');
-        
-        // Limpiar mensaje de error
-        const feedback = campo.parentNode.querySelector('.invalid-feedback');
-        if (feedback) {
-            feedback.textContent = '';
-        }
     }
 
     limpiarValidacion(campo) {
         campo.classList.remove('is-valid', 'is-invalid');
     }
 
-    confirmarEliminacion(boton) {
-        const nombreUsuario = boton.getAttribute('data-usuario');
+confirmarEliminacion(boton) {
+        const nombre = boton.getAttribute('data-usuario');
+        const estado = boton.getAttribute('data-estado');
         const url = boton.getAttribute('href');
+        
+        const config = {
+            titulo: estado === 'activo' ? '¿Desactivar Usuario?' : '¿Activar Usuario?',
+            textoBtn: estado === 'activo' ? 'Sí, desactivar' : 'Sí, activar',
+            color: estado === 'activo' ? '#d33' : '#28a745',
+            icono: estado === 'activo' ? 'warning' : 'question'
+        };
 
         Swal.fire({
-            title: '¿Eliminar Usuario?',
-            html: `¿Estás seguro de que deseas eliminar al usuario <strong>"${nombreUsuario}"</strong>?<br><br>
-                  <span class="text-danger">Esta acción no se puede deshacer.</span>`,
-            icon: 'warning',
+            title: config.titulo,
+            html: `¿Deseas cambiar el estado de <strong>"${nombre}"</strong>?<br><small class="text-muted">Esto afectará los permisos de acceso al sistema.</small>`,
+            icon: config.icono,
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, eliminar',
+            confirmButtonColor: config.color,
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: config.textoBtn,
             cancelButtonText: 'Cancelar',
-            backdrop: true,
-            allowOutsideClick: false,
-            customClass: {
-                popup: 'sweetalert-custom'
-            }
+            reverseButtons: true
         }).then((result) => {
             if (result.isConfirmed) {
                 this.procesarEliminacion(url);
@@ -159,8 +139,8 @@ class UsuariosManager {
 
     procesarEliminacion(url) {
         Swal.fire({
-            title: 'Eliminando usuario...',
-            text: 'Por favor espere',
+            title: 'Actualizando...',
+            text: 'Cambiando privilegios de acceso',
             icon: 'info',
             allowOutsideClick: false,
             showConfirmButton: false,
@@ -168,11 +148,7 @@ class UsuariosManager {
                 Swal.showLoading();
             }
         });
-
-        // Simular redirección (en una aplicación real, esto sería una petición AJAX)
-        setTimeout(() => {
-            window.location.href = url;
-        }, 1000);
+        window.location.href = url;
     }
 
     mostrarError(mensaje) {
@@ -180,18 +156,7 @@ class UsuariosManager {
             title: 'Error',
             text: mensaje,
             icon: 'error',
-            confirmButtonColor: '#d32f2f',
-            confirmButtonText: 'Entendido'
-        });
-    }
-
-    mostrarExito(mensaje) {
-        Swal.fire({
-            title: '¡Éxito!',
-            text: mensaje,
-            icon: 'success',
-            confirmButtonColor: '#28a745',
-            confirmButtonText: 'Continuar'
+            confirmButtonColor: '#d32f2f'
         });
     }
 
@@ -199,8 +164,10 @@ class UsuariosManager {
         setTimeout(() => {
             const alerts = document.querySelectorAll('.alert');
             alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+                if (typeof bootstrap !== 'undefined') {
+                    const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+                    if (bsAlert) bsAlert.close();
+                }
             });
         }, 5000);
     }
@@ -211,22 +178,14 @@ document.addEventListener('DOMContentLoaded', () => {
     window.usuariosManager = new UsuariosManager();
 });
 
-// Función global para mostrar notificaciones
+// Función global para notificaciones tipo Toast
 window.mostrarNotificacion = function(mensaje, tipo = 'success') {
     const Toast = Swal.mixin({
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
         timer: 3000,
-        timerProgressBar: true,
-        didOpen: (toast) => {
-            toast.addEventListener('mouseenter', Swal.stopTimer);
-            toast.addEventListener('mouseleave', Swal.resumeTimer);
-        }
+        timerProgressBar: true
     });
-
-    Toast.fire({
-        icon: tipo,
-        title: mensaje
-    });
+    Toast.fire({ icon: tipo, title: mensaje });
 };
