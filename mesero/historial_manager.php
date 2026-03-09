@@ -7,10 +7,9 @@ header('Content-Type: application/json');
 $usuario_id = $_SESSION['user']['id'];
 
 // --- LIMPIEZA AUTOMÁTICA DE BLOQUEOS FANTASMA ---
-// Libera pedidos que quedaron trabados por más de 30 minutos
 $pdo->query("UPDATE comanda SET editando = 0 WHERE editando = 1 AND fecha_creacion < NOW() - INTERVAL 30 MINUTE");
 
-// --- ACCIÓN: OBTENER DETALLE ---
+// --- ACCIÓN: OBTENER DETALLE (CORREGIDO PARA ANEXOS) ---
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'obtener_detalle') {
     $id = $_GET['id'] ?? 0;
     
@@ -19,13 +18,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     $comanda = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($comanda) {
-        $stmt_det = $pdo->prepare("
-            SELECT dc.*, p.nombre, c.nombre as tipo_categoria 
-            FROM detalle_comanda dc
-            JOIN producto p ON dc.producto_id = p.id
-            JOIN categoria_producto c ON p.categoria_id = c.id
-            WHERE dc.comanda_id = ?
-        ");
+        // 🔥 MAGIA: Si la comanda es un anexo en preparación, SOLO traemos los detalles que son anexo.
+        // Así el mesero no ve ni daña las pizzas viejas, y el JS no colapsa.
+        $es_anexo = (isset($comanda['es_anexo']) && $comanda['es_anexo'] == 1);
+
+        if ($es_anexo && $comanda['estado'] === 'en_preparacion') {
+            $stmt_det = $pdo->prepare("
+                SELECT dc.*, p.nombre, c.nombre as tipo_categoria 
+                FROM detalle_comanda dc
+                JOIN producto p ON dc.producto_id = p.id
+                JOIN categoria_producto c ON p.categoria_id = c.id
+                WHERE dc.comanda_id = ? AND dc.es_anexo = 1
+            ");
+        } else {
+            // Si es un pedido normal, traemos todo
+            $stmt_det = $pdo->prepare("
+                SELECT dc.*, p.nombre, c.nombre as tipo_categoria 
+                FROM detalle_comanda dc
+                JOIN producto p ON dc.producto_id = p.id
+                JOIN categoria_producto c ON p.categoria_id = c.id
+                WHERE dc.comanda_id = ?
+            ");
+        }
+        
         $stmt_det->execute([$id]);
         $detalles = $stmt_det->fetchAll(PDO::FETCH_ASSOC);
 
@@ -36,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     exit;
 }
 
-// --- BLOQUEAR PARA EDICIÓN (CORREGIDO) ---
+// --- BLOQUEAR PARA EDICIÓN ---
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'bloquear') {
     $id = $_GET['id'] ?? 0;
     
@@ -68,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $pdo->prepare("
         SELECT c.id, c.total, c.estado, c.tipo_servicio, c.mesa_id, c.fecha_creacion, c.editando,
-        c.cliente_id,      
+        c.cliente_id, c.es_anexo,      
         cl.nombre as nombre_cliente
         FROM comanda c
         LEFT JOIN cliente cl ON c.cliente_id = cl.id

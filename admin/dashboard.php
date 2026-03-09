@@ -32,8 +32,9 @@ require_role('admin');
     <div class="container my-5">
         <h1 class="text-center mb-5 fw-bold text-dark">Panel de Administración</h1>
 
-        <div class="row g-4">
-            <div class="col-md-6 col-lg-3">
+        <div class="row justify-content-center g-4">
+            
+            <div class="col-md-6 col-lg-4">
                 <div class="card h-100 text-center p-3">
                     <div class="card-body d-flex flex-column">
                         <div class="card-icon-wrapper">
@@ -46,7 +47,7 @@ require_role('admin');
                 </div>
             </div>
 
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-6 col-lg-4">
                 <div class="card h-100 text-center p-3">
                     <div class="card-body d-flex flex-column">
                         <div class="card-icon-wrapper">
@@ -59,7 +60,20 @@ require_role('admin');
                 </div>
             </div>
 
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-6 col-lg-4">
+                <div class="card h-100 text-center p-3">
+                    <div class="card-body d-flex flex-column">
+                        <div class="card-icon-wrapper">
+                            <i class="fas fa-chair"></i>
+                        </div>
+                        <h5 class="card-title">Gestión de Mesas</h5>
+                        <p class="card-text flex-grow-1 text-muted small">Administra la distribución, visibilidad y rentabilidad de las mesas del local.</p>
+                        <a href="administrar/mesas.php" class="btn btn-kpizzas-red w-100 mt-auto">Gestionar Mesas</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
                 <div class="card h-100 text-center p-3">
                     <div class="card-body d-flex flex-column">
                         <div class="card-icon-wrapper">
@@ -72,7 +86,7 @@ require_role('admin');
                 </div>
             </div>
 
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-6 col-lg-4">
                 <div class="card h-100 text-center p-3">
                     <div class="card-body d-flex flex-column">
                         <div class="card-icon-wrapper">
@@ -84,6 +98,7 @@ require_role('admin');
                     </div>
                 </div>
             </div>
+
         </div>  
     </div>
 

@@ -1,8 +1,8 @@
 <?php
 // --- AUTENTICACIÓN Y CONFIGURACIÓN ---
 require_once __DIR__ . '/../auth/middleware.php';
-require_once __DIR__ . '/../config/db.php'; 
-require_once __DIR__ . '/../fpdf186/fpdf.php'; 
+require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../fpdf186/fpdf.php';
 require_once __DIR__ . '/../config/tasa_helper.php';
 
 session_start();
@@ -21,14 +21,16 @@ $tasa_dolar = obtenerTasaDolarActual($pdo);
 
 // --- OBTENER DATOS DE LA COMANDA ---
 $stmt_comanda = $pdo->prepare("
-    SELECT c.id, c.total, c.fecha_creacion, u.nombre as mesero_nombre, c.tipo_servicio, m.numero as mesa_numero
+    SELECT c.id, c.total, c.estado, c.fecha_creacion, u.nombre as mesero_nombre, c.tipo_servicio, m.numero as mesa_numero
     FROM comanda c JOIN usuario u ON c.usuario_id = u.id LEFT JOIN mesa m ON c.mesa_id = m.id
     WHERE c.id = ?
 ");
 $stmt_comanda->execute([$comanda_id]);
-$comanda = $stmt_comanda->fetch(PDO::FETCH_ASSOC); 
+$comanda = $stmt_comanda->fetch(PDO::FETCH_ASSOC);
 
-if (!$comanda) { die('Comanda no encontrada.'); }
+if (!$comanda) {
+    die('Comanda no encontrada.');
+}
 
 $total_usd = (float)$comanda['total'];
 $total_bs = convertirDolaresABolivares($total_usd, $tasa_dolar);
@@ -51,17 +53,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
 
-        // 1. Marcar la comanda como cobrada
-        $stmt_comanda = $pdo->prepare("UPDATE comanda SET estado = 'cobrado' WHERE id = ?");
-        $stmt_comanda->execute([$comanda_id]);
+        // 1. Cambiar estado dependiendo del flujo
+        if ($comanda['tipo_servicio'] === 'Llevar' && $comanda['estado'] === 'pendiente') {
+            $nuevo_estado = 'en_preparacion'; // ¡Se envía a la cocina!
+        } else {
+            $nuevo_estado = 'cobrado'; // Cierra el ciclo de la mesa
+        }
+
+        $stmt_comanda = $pdo->prepare("UPDATE comanda SET estado = ? WHERE id = ?");
+        $stmt_comanda->execute([$nuevo_estado, $comanda_id]);
 
         // 2. LIBERAR LA MESA (Esto la pone en verde)
-        // Buscamos si la comanda tiene una mesa asignada
         $stmt_info = $pdo->prepare("SELECT mesa_id, tipo_servicio FROM comanda WHERE id = ?");
         $stmt_info->execute([$comanda_id]);
         $info_comanda = $stmt_info->fetch(PDO::FETCH_ASSOC);
 
         if ($info_comanda['tipo_servicio'] === 'Mesa' && !empty($info_comanda['mesa_id'])) {
+            // 🔥 AQUÍ ES DONDE SE GUARDA EN LA BASE DE DATOS
             $stmt_mesa = $pdo->prepare("UPDATE mesa SET estado = 'disponible' WHERE id = ?");
             $stmt_mesa->execute([$info_comanda['mesa_id']]);
         }
@@ -86,9 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->commit();
         header("Location: caja.php?cobro_exito=true");
         exit;
-
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $error_msg = $e->getMessage();
         header("Location: caja.php?cobro_exito=false&error_msg=" . urlencode($error_msg));
         exit;
@@ -98,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <title>Cobrar Pedido #<?php echo $comanda_id; ?></title>
@@ -106,6 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <link href="../css/caja.css" rel="stylesheet">
 </head>
+
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-kpizzas-red">
         <div class="container">
@@ -225,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const divBancos = document.getElementById('datos-bancarios');
             const divUsd = document.getElementById('pago-usd-fields');
             const divBs = document.getElementById('pago-bs-fields');
-            
+
             const inputUsd = document.getElementById('monto_recibido_usd');
             const inputBs = document.getElementById('monto_recibido_bs');
             const inputRef = document.getElementById('referencia');
@@ -248,36 +259,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (selectMetodo) {
                 selectMetodo.addEventListener('change', function() {
                     const metodo = this.value;
-                    
+
                     // Limpiar valores
-                    if(inputUsd) inputUsd.value = '';
-                    if(inputBs) inputBs.value = '';
-                    if(inputRef) inputRef.value = '';
-                    if(inputBanco) inputBanco.value = '';
+                    if (inputUsd) inputUsd.value = '';
+                    if (inputBs) inputBs.value = '';
+                    if (inputRef) inputRef.value = '';
+                    if (inputBanco) inputBanco.value = '';
 
                     // Configuración inicial de visibilidad
-                    if(divUsd) divUsd.style.display = 'none';
-                    if(divBs) divBs.style.display = 'none';
-                    if(divBancos) divBancos.style.display = 'none';
+                    if (divUsd) divUsd.style.display = 'none';
+                    if (divBs) divBs.style.display = 'none';
+                    if (divBancos) divBancos.style.display = 'none';
 
                     if (metodo === 'Efectivo') {
-                        if(divUsd) divUsd.style.display = 'block';
-                        if(inputUsd) inputUsd.value = TOTAL_USD.toFixed(2); // Autollenar
-                    } 
-                    else if (metodo === 'Pago Móvil' || metodo === 'Transferencia') {
-                        if(divBs) divBs.style.display = 'block';
-                        if(divBancos) divBancos.style.display = 'block'; // Mostrar bancos
-                        if(inputBs) inputBs.value = TOTAL_BS.toFixed(2); // Autollenar
-                    } 
-                    else if (metodo === 'Tarjeta') {
-                        if(divBs) divBs.style.display = 'block';
-                        if(divBancos) divBancos.style.display = 'none'; // Tarjeta no pide banco origen visualmente aqui
-                        if(inputBs) inputBs.value = TOTAL_BS.toFixed(2);
-                    } 
-                    else if (metodo === 'Pago Mixto') {
-                        if(divUsd) divUsd.style.display = 'block';
-                        if(divBs) divBs.style.display = 'block';
-                        if(divBancos) divBancos.style.display = 'block'; // Opcional referencia
+                        if (divUsd) divUsd.style.display = 'block';
+                        if (inputUsd) inputUsd.value = TOTAL_USD.toFixed(2); // Autollenar
+                    } else if (metodo === 'Pago Móvil' || metodo === 'Transferencia') {
+                        if (divBs) divBs.style.display = 'block';
+                        if (divBancos) divBancos.style.display = 'block'; // Mostrar bancos
+                        if (inputBs) inputBs.value = TOTAL_BS.toFixed(2); // Autollenar
+                    } else if (metodo === 'Tarjeta') {
+                        if (divBs) divBs.style.display = 'block';
+                        if (divBancos) divBancos.style.display = 'none'; // Tarjeta no pide banco origen visualmente aqui
+                        if (inputBs) inputBs.value = TOTAL_BS.toFixed(2);
+                    } else if (metodo === 'Pago Mixto') {
+                        if (divUsd) divUsd.style.display = 'block';
+                        if (divBs) divBs.style.display = 'block';
+                        if (divBancos) divBancos.style.display = 'block'; // Opcional referencia
                     }
 
                     validarFormulario();
@@ -293,9 +301,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         const restanteUsd = TOTAL_USD - valUsd;
                         if (restanteUsd > 0) {
                             const restanteBs = restanteUsd * TASA;
-                            if(inputBs) inputBs.value = restanteBs.toFixed(2);
+                            if (inputBs) inputBs.value = restanteBs.toFixed(2);
                         } else {
-                            if(inputBs) inputBs.value = 0;
+                            if (inputBs) inputBs.value = 0;
                         }
                     }
                     calcularTotales();
@@ -308,11 +316,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         const valBs = parseFloat(this.value) || 0;
                         const valBsEnUsd = valBs / TASA;
                         const restanteUsd = TOTAL_USD - valBsEnUsd;
-                        
+
                         if (restanteUsd > 0) {
-                            if(inputUsd) inputUsd.value = restanteUsd.toFixed(2);
+                            if (inputUsd) inputUsd.value = restanteUsd.toFixed(2);
                         } else {
-                            if(inputUsd) inputUsd.value = 0;
+                            if (inputUsd) inputUsd.value = 0;
                         }
                     }
                     calcularTotales();
@@ -324,7 +332,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 const usd = inputUsd ? (parseFloat(inputUsd.value) || 0) : 0;
                 const bs = inputBs ? (parseFloat(inputBs.value) || 0) : 0;
                 const totalPagadoUsd = usd + (bs / TASA);
-                
+
                 let faltante = TOTAL_USD - totalPagadoUsd;
                 let cambio = 0;
 
@@ -334,15 +342,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     faltante = 0;
                 }
 
-                if(lblFaltante) lblFaltante.textContent = `$${faltante.toFixed(2)}`;
-                if(lblCambio) lblCambio.textContent = `$${cambio.toFixed(2)}`;
+                if (lblFaltante) lblFaltante.textContent = `$${faltante.toFixed(2)}`;
+                if (lblCambio) lblCambio.textContent = `$${cambio.toFixed(2)}`;
 
                 if (faltante > 0) {
-                    if(lblFaltanteBs) lblFaltanteBs.textContent = `(Bs. ${(faltante * TASA).toFixed(2)})`;
-                    if(lblFaltante) lblFaltante.className = 'text-danger fw-bold';
+                    if (lblFaltanteBs) lblFaltanteBs.textContent = `(Bs. ${(faltante * TASA).toFixed(2)})`;
+                    if (lblFaltante) lblFaltante.className = 'text-danger fw-bold';
                 } else {
-                    if(lblFaltanteBs) lblFaltanteBs.textContent = '¡Completo!';
-                    if(lblFaltante) lblFaltante.className = 'text-success fw-bold';
+                    if (lblFaltanteBs) lblFaltanteBs.textContent = '¡Completo!';
+                    if (lblFaltante) lblFaltante.className = 'text-success fw-bold';
                 }
 
                 validarFormulario(faltante);
@@ -361,12 +369,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (inputRef.classList) inputRef.classList.remove('is-invalid');
                     }
                     if (inputBanco && inputBanco.value === "") valido = false;
-                } 
+                }
                 // B. En Mixto la referencia es opcional según tu regla ("menos en el pago mixto")
                 else if (metodo === 'Pago Mixto') {
                     // No bloqueamos por referencia, pero si escriben algo debe ser números
-                    if(inputRef && inputRef.value.length > 0 && inputRef.value.length < 4) {
-                         // Opcional: si escribe, que sean 4. Si lo dejas vacío, pasa.
+                    if (inputRef && inputRef.value.length > 0 && inputRef.value.length < 4) {
+                        // Opcional: si escribe, que sean 4. Si lo dejas vacío, pasa.
                     }
                 }
 
@@ -374,7 +382,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 const usd = inputUsd ? (parseFloat(inputUsd.value) || 0) : 0;
                 const bs = inputBs ? (parseFloat(inputBs.value) || 0) : 0;
                 const totalPagado = usd + (bs / TASA);
-                
+
                 if (totalPagado < (TOTAL_USD - 0.01)) {
                     valido = false;
                 }
@@ -399,4 +407,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         });
     </script>
 </body>
+
 </html>

@@ -45,21 +45,22 @@ class ReporteController
         $this->tasa_actual = $tasa_actual;
     }
 
-// NUEVO: CONTAR REGISTROS PARA PAGINACIÓN (INCLUYENDO CLIENTE)
-    public function contarHistorialVentas($inicio, $fin, $busqueda = '') {
+    // NUEVO: CONTAR REGISTROS PARA PAGINACIÓN (INCLUYENDO CLIENTE)
+    public function contarHistorialVentas($inicio, $fin, $busqueda = '')
+    {
         $sql = "SELECT COUNT(DISTINCT c.id) as total 
                 FROM comanda c
                 INNER JOIN pago p ON p.comanda_id = c.id
                 LEFT JOIN cliente cl ON c.cliente_id = cl.id
                 WHERE DATE(p.fecha_pago) BETWEEN :inicio AND :fin";
-        
+
         $params = [':inicio' => $inicio, ':fin' => $fin];
-        
+
         if (!empty($busqueda)) {
             $sql .= " AND (c.id LIKE :b1 OR p.referencia LIKE :b2 OR p.banco_origen LIKE :b3 OR cl.nombre LIKE :b4 OR cl.cedula LIKE :b5)";
             $params[':b1'] = $params[':b2'] = $params[':b3'] = $params[':b4'] = $params[':b5'] = "%$busqueda%";
         }
-        
+
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
         $res = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -67,7 +68,8 @@ class ReporteController
     }
 
     // MODIFICADO: HISTORIAL CON BÚSQUEDA AVANZADA Y DATOS DEL CLIENTE
-    public function obtenerHistorialVentas($inicio, $fin, $busqueda = '', $limit = null, $offset = 0) {
+    public function obtenerHistorialVentas($inicio, $fin, $busqueda = '', $limit = null, $offset = 0)
+    {
         $sql = "
             SELECT 
                 c.id, 
@@ -90,25 +92,25 @@ class ReporteController
             LEFT JOIN cliente cl ON c.cliente_id = cl.id
             WHERE DATE(p.fecha_pago) BETWEEN :inicio AND :fin
         ";
-        
+
         $params = [':inicio' => $inicio, ':fin' => $fin];
-        
+
         if (!empty($busqueda)) {
             $sql .= " AND (c.id LIKE :b1 OR p.referencia LIKE :b2 OR p.banco_origen LIKE :b3 OR cl.nombre LIKE :b4 OR cl.cedula LIKE :b5)";
-            $params[':b1'] = "%$busqueda%"; 
-            $params[':b2'] = "%$busqueda%"; 
+            $params[':b1'] = "%$busqueda%";
+            $params[':b2'] = "%$busqueda%";
             $params[':b3'] = "%$busqueda%";
             $params[':b4'] = "%$busqueda%";
             $params[':b5'] = "%$busqueda%";
         }
-        
+
         $sql .= " GROUP BY c.id ORDER BY c.id DESC";
-        
+
         if ($limit !== null) {
             $sql .= " LIMIT :limit OFFSET :offset";
         }
-        
-        try { 
+
+        try {
             $stmt = $this->pdo->prepare($sql);
             if ($limit !== null) {
                 $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
@@ -117,10 +119,10 @@ class ReporteController
             foreach ($params as $key => $val) {
                 $stmt->bindValue($key, $val);
             }
-            $stmt->execute(); 
-            return $stmt->fetchAll(PDO::FETCH_ASSOC); 
-        } catch (PDOException $e) { 
-            return []; 
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            return [];
         }
     }
     // --- RESTO DE FUNCIONES DE GRÁFICAS (SIN CAMBIOS) ---
@@ -150,7 +152,7 @@ class ReporteController
 
     public function obtenerProductosMasVendidos($i, $f)
     {
-        $sql = "SELECT CASE WHEN cp.nombre='Pizza Base' THEN CONCAT('Pizza ', dc.tamanio) ELSE p.nombre END AS n, cp.nombre as c, SUM(dc.cantidad) as q, SUM(dc.subtotal) as t FROM detalle_comanda dc INNER JOIN producto p ON dc.producto_id=p.id INNER JOIN categoria_producto cp ON p.categoria_id=cp.id INNER JOIN comanda c ON dc.comanda_id=c.id INNER JOIN pago pg ON c.id=pg.comanda_id WHERE c.estado='cobrado' AND DATE(pg.fecha_pago) BETWEEN :i AND :f GROUP BY n, c ORDER BY q DESC LIMIT 10";
+        $sql = "SELECT CASE WHEN cp.nombre='Pizza Base' THEN CONCAT('Pizza ', dc.tamanio) ELSE p.nombre END AS n, cp.nombre as c, SUM(dc.cantidad) as q, SUM(dc.subtotal) as t FROM detalle_comanda dc INNER JOIN producto p ON dc.producto_id=p.id INNER JOIN categoria_producto cp ON p.categoria_id=cp.id INNER JOIN comanda c ON dc.comanda_id=c.id INNER JOIN pago pg ON c.id=pg.comanda_id WHERE c.estado='cobrado' AND DATE(pg.fecha_pago) BETWEEN :i AND :f GROUP BY n, c ORDER BY q DESC";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['i' => $i, 'f' => $f]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -228,7 +230,7 @@ foreach ($ventas_servicio as $s) {
 }
 $js_productos = [];
 foreach ($top_productos as $p) {
-    $js_productos[] = ['producto' => $p['n'], 'vendidos' => (int)$p['q'], 'ingresos' => (float)$p['t']];
+    $js_productos[] = ['producto' => $p['n'], 'categoria' => $p['c'], 'vendidos' => (int)$p['q'], 'ingresos' => (float)$p['t']];
 }
 $js_meseros = [];
 $temp_meseros = [];
@@ -494,9 +496,24 @@ foreach ($tipo_pago_data as $t) {
                                 <div class="chart-container">
                                     <div class="chart-header mb-3 d-flex justify-content-between align-items-center">
                                         <h5><i class="fas fa-list me-2"></i>Detalle de Productos</h5>
-                                        <div class="d-flex gap-2">
-                                            <button class="btn btn-success btn-sm text-white" onclick="exportarExcel('tabla-rentabilidad-productos', 'Rentabilidad_Productos')"><i class="fas fa-file-excel me-1"></i> Excel</button>
-                                            <button class="btn btn-danger btn-sm text-white" onclick="exportarPDF('tabla-rentabilidad-productos', 'Rentabilidad_Productos', 'Análisis de Rentabilidad - Productos')"><i class="fas fa-file-pdf me-1"></i> PDF</button>
+
+                                        <div class="d-flex gap-2 align-items-center">
+
+                                            <div class="input-group input-group-sm shadow-sm" style="width: 220px;">
+                                                <span class="input-group-text bg-warning text-dark fw-bold">
+                                                    <i class="fas fa-filter me-1"></i> Categoría
+                                                </span>
+                                                <select id="filtro-categoria-js" class="form-select border-warning">
+                                                    <option value="Todas">Todas</option>
+                                                </select>
+                                            </div>
+
+                                            <button class="btn btn-success btn-sm text-white" onclick="exportarExcel('tabla-rentabilidad-productos', 'Rentabilidad_Productos')">
+                                                <i class="fas fa-file-excel me-1"></i> Excel
+                                            </button>
+                                            <button class="btn btn-danger btn-sm text-white" onclick="exportarPDF('tabla-rentabilidad-productos', 'Rentabilidad_Productos', 'Análisis de Rentabilidad - Productos')">
+                                                <i class="fas fa-file-pdf me-1"></i> PDF
+                                            </button>
                                         </div>
                                     </div>
                                     <div class="table-responsive">
@@ -530,6 +547,7 @@ foreach ($tipo_pago_data as $t) {
                                 </div>
                             </div>
                         </div>
+
                     </div>
 
                     <div class="tab-pane fade" id="servicios">
@@ -693,55 +711,55 @@ foreach ($tipo_pago_data as $t) {
                                             </tr>
                                         <?php else: ?>
                                             <?php foreach ($historial_ventas as $venta): ?>
-                                               <tr>
-                                                <td><span class="badge bg-secondary">#<?php echo $venta['id']; ?></span></td>
-                                                <td class="fw-bold">
-                                                    <?php 
+                                                <tr>
+                                                    <td><span class="badge bg-secondary">#<?php echo $venta['id']; ?></span></td>
+                                                    <td class="fw-bold">
+                                                        <?php
                                                         if (!empty($venta['fecha_pago'])) {
                                                             echo date('d/m/Y H:i', strtotime($venta['fecha_pago']));
                                                         } else {
                                                             echo '<span class="text-muted">Sin fecha</span>';
                                                         }
-                                                    ?>
-                                                </td>
-                                                <td><?php echo htmlspecialchars($venta['mesero']); ?></td>
-                                                <td>
-                                                    <?php if($venta['tipo_servicio'] == 'Mesa'): ?>
-                                                        <span class="badge bg-primary">Mesa</span>
-                                                    <?php else: ?>
-                                                        <span class="badge bg-warning text-dark">Llevar</span>
-                                                        <?php if(!empty($venta['cliente_nombre'])): ?>
-                                                            <br><small class="text-muted fw-bold" style="font-size: 0.75rem;"><i class="fas fa-user me-1"></i><?php echo htmlspecialchars($venta['cliente_nombre']); ?></small>
+                                                        ?>
+                                                    </td>
+                                                    <td><?php echo htmlspecialchars($venta['mesero']); ?></td>
+                                                    <td>
+                                                        <?php if ($venta['tipo_servicio'] == 'Mesa'): ?>
+                                                            <span class="badge bg-primary">Mesa</span>
+                                                        <?php else: ?>
+                                                            <span class="badge bg-warning text-dark">Llevar</span>
+                                                            <?php if (!empty($venta['cliente_nombre'])): ?>
+                                                                <br><small class="text-muted fw-bold" style="font-size: 0.75rem;"><i class="fas fa-user me-1"></i><?php echo htmlspecialchars($venta['cliente_nombre']); ?></small>
+                                                            <?php endif; ?>
                                                         <?php endif; ?>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td class="small fw-bold text-primary"><?php echo htmlspecialchars($venta['metodo_pago'] ?? 'N/A'); ?></td>
-                                                <td class="small">
-                                                    <?php if($venta['total_usd'] > 0): ?>
-                                                        <div class="text-primary fw-bold">$<?php echo number_format($venta['total_usd'], 2); ?></div>
-                                                    <?php endif; ?>
-                                                    <?php if($venta['total_bs'] > 0): ?>
-                                                        <div class="text-success fw-bold">Bs. <?php echo number_format($venta['total_bs'], 2); ?></div>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td class="small text-center"><?php echo ($venta['tasa_registrada'] > 0) ? number_format($venta['tasa_registrada'], 2) : '-'; ?></td>
-                                                <td class="small">
-                                                    <?php if(!empty($venta['referencia'])): ?>
-                                                        <strong>Ref: <?php echo htmlspecialchars($venta['referencia']); ?></strong>
-                                                        <?php if(!empty($venta['banco_origen'])): ?>
-                                                            <br><span class="text-muted"><?php echo htmlspecialchars($venta['banco_origen']); ?></span>
+                                                    </td>
+                                                    <td class="small fw-bold text-primary"><?php echo htmlspecialchars($venta['metodo_pago'] ?? 'N/A'); ?></td>
+                                                    <td class="small">
+                                                        <?php if ($venta['total_usd'] > 0): ?>
+                                                            <div class="text-primary fw-bold">$<?php echo number_format($venta['total_usd'], 2); ?></div>
                                                         <?php endif; ?>
-                                                    <?php else: ?>
-                                                        <span class="text-muted">-</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td class="text-end fw-bold text-dark">$<?php echo number_format($venta['total'], 2); ?></td>
-                                                <td class="text-center">
-                                                    <a href="../../caja/generar_factura_pdf.php?id=<?php echo $venta['id']; ?>" target="_blank" class="btn btn-sm btn-outline-danger" title="Reimprimir factura">
-                                                        <i class="fas fa-file-pdf"></i>
-                                                    </a>
-                                                </td>
-                                            </tr>
+                                                        <?php if ($venta['total_bs'] > 0): ?>
+                                                            <div class="text-success fw-bold">Bs. <?php echo number_format($venta['total_bs'], 2); ?></div>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="small text-center"><?php echo ($venta['tasa_registrada'] > 0) ? number_format($venta['tasa_registrada'], 2) : '-'; ?></td>
+                                                    <td class="small">
+                                                        <?php if (!empty($venta['referencia'])): ?>
+                                                            <strong>Ref: <?php echo htmlspecialchars($venta['referencia']); ?></strong>
+                                                            <?php if (!empty($venta['banco_origen'])): ?>
+                                                                <br><span class="text-muted"><?php echo htmlspecialchars($venta['banco_origen']); ?></span>
+                                                            <?php endif; ?>
+                                                        <?php else: ?>
+                                                            <span class="text-muted">-</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="text-end fw-bold text-dark">$<?php echo number_format($venta['total'], 2); ?></td>
+                                                    <td class="text-center">
+                                                        <a href="../../caja/generar_factura_pdf.php?id=<?php echo $venta['id']; ?>" target="_blank" class="btn btn-sm btn-outline-danger" title="Reimprimir factura">
+                                                            <i class="fas fa-file-pdf"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
                                     </tbody>
@@ -765,30 +783,30 @@ foreach ($tipo_pago_data as $t) {
                                 <tbody>
                                     <?php foreach ($historial_completo as $venta): ?>
                                         <tr>
-                                        <td><?php echo $venta['id']; ?></td>
-                                        <td><?php echo !empty($venta['fecha_pago']) ? date('d/m/Y H:i', strtotime($venta['fecha_pago'])) : 'Sin fecha'; ?></td>
-                                        <td><?php echo htmlspecialchars($venta['mesero']); ?></td>
-                                        <td>
-                                            <?php 
-                                                echo $venta['tipo_servicio']; 
+                                            <td><?php echo $venta['id']; ?></td>
+                                            <td><?php echo !empty($venta['fecha_pago']) ? date('d/m/Y H:i', strtotime($venta['fecha_pago'])) : 'Sin fecha'; ?></td>
+                                            <td><?php echo htmlspecialchars($venta['mesero']); ?></td>
+                                            <td>
+                                                <?php
+                                                echo $venta['tipo_servicio'];
                                                 if ($venta['tipo_servicio'] == 'Llevar' && !empty($venta['cliente_nombre'])) {
                                                     echo ' (' . htmlspecialchars($venta['cliente_nombre']) . ')';
                                                 }
-                                            ?>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($venta['metodo_pago'] ?? 'N/A'); ?></td>
-                                        <td>
-                                            <?php 
+                                                ?>
+                                            </td>
+                                            <td><?php echo htmlspecialchars($venta['metodo_pago'] ?? 'N/A'); ?></td>
+                                            <td>
+                                                <?php
                                                 $montos_str = [];
-                                                if($venta['total_usd'] > 0) $montos_str[] = '$' . number_format($venta['total_usd'], 2);
-                                                if($venta['total_bs'] > 0) $montos_str[] = 'Bs. ' . number_format($venta['total_bs'], 2);
+                                                if ($venta['total_usd'] > 0) $montos_str[] = '$' . number_format($venta['total_usd'], 2);
+                                                if ($venta['total_bs'] > 0) $montos_str[] = 'Bs. ' . number_format($venta['total_bs'], 2);
                                                 echo implode(" | ", $montos_str);
-                                            ?>
-                                        </td>
-                                        <td><?php echo ($venta['tasa_registrada'] > 0) ? number_format($venta['tasa_registrada'], 2) : '-'; ?></td>
-                                        <td><?php echo !empty($venta['referencia']) ? htmlspecialchars($venta['referencia']) . ' ' . htmlspecialchars($venta['banco_origen'] ?? '') : '-'; ?></td>
-                                        <td>$<?php echo number_format($venta['total'], 2); ?></td>
-                                    </tr>
+                                                ?>
+                                            </td>
+                                            <td><?php echo ($venta['tasa_registrada'] > 0) ? number_format($venta['tasa_registrada'], 2) : '-'; ?></td>
+                                            <td><?php echo !empty($venta['referencia']) ? htmlspecialchars($venta['referencia']) . ' ' . htmlspecialchars($venta['banco_origen'] ?? '') : '-'; ?></td>
+                                            <td>$<?php echo number_format($venta['total'], 2); ?></td>
+                                        </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>

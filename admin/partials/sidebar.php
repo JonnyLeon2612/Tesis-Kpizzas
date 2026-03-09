@@ -41,12 +41,19 @@ $dash_prefix = ($current_page == 'dashboard.php') ? '' : '../';
                     <i class="fas fa-chart-pie"></i> <span>Reportes</span>
                 </a>
             </li>
+
+            <li class="nav-item">
+    <a class="nav-link <?php echo $current_page == 'mesas.php' ? 'active' : ''; ?>" href="<?php echo $prefix; ?>mesas.php">
+        <i class="fas fa-chair"></i> <span>Mesas</span>
+    </a>
+</li>
             
             <li class="nav-item mt-3 pt-3 border-top">
                 <a class="nav-link <?php echo $current_page == 'dolar.php' ? 'active' : ''; ?>" href="<?php echo $prefix; ?>dolar.php">
                     <i class="fas fa-exchange-alt"></i> <span>Tasa del Día</span>
                 </a>
             </li>
+            
         </ul>
     </div>
 </nav>

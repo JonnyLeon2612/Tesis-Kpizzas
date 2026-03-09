@@ -4,6 +4,17 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/tasa_helper.php'; // Incluimos el helper
 require_role('caja');
 
+if (isset($_GET['entregar_id']) && is_numeric($_GET['entregar_id'])) {
+    $entregar_id = (int)$_GET['entregar_id'];
+    // Pasamos el estado a 'cobrado' para cerrar el ciclo
+    $stmt_entregar = $pdo->prepare("UPDATE comanda SET estado = 'cobrado' WHERE id = ? AND tipo_servicio = 'Llevar'");
+    $stmt_entregar->execute([$entregar_id]);
+
+    // Redirigimos para limpiar la URL y evitar que se reenvíe si recargan la página
+    header("Location: caja.php");
+    exit;
+}
+
 // --- OBTENER TASA DE CAMBIO ACTUAL ---
 $tasa_actual = obtenerTasaDolarActual($pdo);
 
@@ -14,15 +25,14 @@ if ($pagina_actual < 1) {
     $pagina_actual = 1;
 }
 $offset = ($pagina_actual - 1) * $pedidos_por_pagina;
-
-// 4. Obtener el NÚMERO TOTAL de pedidos 'listo' (para la insignia de pendientes)
-$stmt_total = $pdo->query("SELECT COUNT(*) FROM comanda WHERE estado = 'listo'");
+// 4. Obtener el NÚMERO TOTAL de pedidos (listos O pendientes para llevar)
+$stmt_total = $pdo->query("SELECT COUNT(*) FROM comanda WHERE (tipo_servicio = 'Llevar' AND estado = 'pendiente') OR estado = 'listo'");
 $total_pedidos_listos = $stmt_total->fetchColumn();
 
 // 5. Calcular el total de páginas
 $total_paginas = ceil($total_pedidos_listos / $pedidos_por_pagina);
 
-// 6. Obtener los pedidos 'listo' paginados
+// 6. Obtener los pedidos paginados
 $stmt_pedidos = $pdo->prepare("
     SELECT 
         c.id, 
@@ -30,14 +40,15 @@ $stmt_pedidos = $pdo->prepare("
         c.total, 
         c.fecha_creacion, 
         u.nombre as mesero_nombre,
-        c.tipo_servicio
+        c.tipo_servicio,
+        c.estado /* <--- AGREGAMOS EL ESTADO A LA CONSULTA */
     FROM comanda c
     JOIN usuario u ON c.usuario_id = u.id
     LEFT JOIN mesa m ON c.mesa_id = m.id
-    WHERE c.estado = 'listo'
+    WHERE (c.tipo_servicio = 'Llevar' AND c.estado = 'pendiente') OR c.estado = 'listo'
     ORDER BY 
         CASE 
-            WHEN c.tipo_servicio = 'Llevar' THEN 1
+            WHEN c.estado = 'pendiente' THEN 1 /* Priorizar los que están esperando para ser cobrados/cocinados */
             ELSE 2
         END,
         c.fecha_creacion ASC
@@ -129,7 +140,7 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                 <div class="card sales-card shadow-sm">
                     <div class="card-body py-4 px-3">
                         <div class="row align-items-center text-center">
-                            
+
                             <div class="col-md-4">
                                 <h5 class="card-title text-muted mb-2">Ventas en Dólares</h5>
                                 <h2 class="display-6 fw-bold text-kpizzas-red mb-0">
@@ -137,7 +148,7 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                                 </h2>
                                 <small class="text-muted">(<?php echo $count_usd; ?> transacciones)</small>
                             </div>
-                            
+
                             <div class="col-md-4 border-start border-end">
                                 <h5 class="card-title text-muted mb-2">Ventas en Bolívares</h5>
                                 <h2 class="display-6 fw-bold text-success mb-0">
@@ -184,7 +195,7 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
             </div>
         <?php else: ?>
             <div class="row">
-                <?php foreach ($pedidos as $pedido): 
+                <?php foreach ($pedidos as $pedido):
                     // Calcular el equivalente en Bs para CADA pedido
                     $total_pedido_bs = convertirDolaresABolivares((float)$pedido['total'], $tasa_actual);
                 ?>
@@ -222,7 +233,7 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                                                     <i class="fas fa-clock me-1"></i><?php echo date('H:i', strtotime($pedido['fecha_creacion'])); ?>
                                                 </small>
                                             </div>
-                                            
+
                                             <button class="btn btn-light btn-sm me-2"
                                                 onclick="cajaManager.toggleDetalles(event, <?php echo $pedido['id']; ?>)">
                                                 <i class="fas fa-list me-1"></i>Detalles
@@ -230,9 +241,20 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                                             <a href="generar_factura_pdf.php?id=<?php echo $pedido['id']; ?>" target="_blank" class="btn btn-danger btn-sm me-2">
                                                 <i class="fas fa-file-pdf me-1"></i>PDF
                                             </a>
-                                            <a href="formulario_cobro.php?id=<?php echo $pedido['id']; ?>" class="btn btn-success btn-sm">
-                                                <i class="fas fa-cash-register me-1"></i>Cobrar
-                                            </a>
+
+                                            <?php if ($pedido['estado'] === 'pendiente'): ?>
+                                                <a href="formulario_cobro.php?id=<?php echo $pedido['id']; ?>" class="btn btn-warning btn-sm">
+                                                    <i class="fas fa-cash-register me-1"></i>Cobrar y Preparar
+                                                </a>
+                                            <?php elseif ($pedido['estado'] === 'listo' && $pedido['tipo_servicio'] === 'Llevar'): ?>
+                                                <a href="caja.php?entregar_id=<?php echo $pedido['id']; ?>" class="btn btn-success btn-sm">
+                                                    <i class="fas fa-check-double me-1"></i>Entregar
+                                                </a>
+                                            <?php else: ?>
+                                                <a href="formulario_cobro.php?id=<?php echo $pedido['id']; ?>" class="btn btn-success btn-sm">
+                                                    <i class="fas fa-cash-register me-1"></i>Cobrar Mesa
+                                                </a>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 </div>
@@ -283,12 +305,12 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                                     ");
                                     $stmt_detalle->execute([$pedido['id']]);
                                     $detalles = $stmt_detalle->fetchAll();
-                                    
+
                                     // Agrupar por pizzas
                                     $pizzas = [];
                                     $bebidas = [];
                                     $current_pizza_index = -1;
-                                    
+
                                     foreach ($detalles as $detalle) {
                                         if ($detalle['categoria'] === 'Pizza Base') {
                                             $current_pizza_index++;
@@ -304,7 +326,7 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                                         }
                                     }
                                     ?>
-                                    
+
                                     <?php if (!empty($pizzas)): ?>
                                         <div class="mb-4">
                                             <h6 class="section-subtitle">
@@ -346,7 +368,7 @@ $cobrados_hoy_count = $stmt_cobrados_hoy->fetchColumn();
                                             </div>
                                         </div>
                                     <?php endif; ?>
-                                    
+
                                     <?php if (!empty($bebidas)): ?>
                                         <div class="mb-3">
                                             <h6 class="section-subtitle">

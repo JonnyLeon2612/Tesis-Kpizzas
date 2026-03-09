@@ -277,39 +277,101 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         },
         
-        'productos-tab': () => {
+'productos-tab': () => {
             console.log('Inicializando pestaña Productos');
             
-            if (productos && productos.length > 0) {
-                initChart('productosChart', 'doughnut', {
-                    data: {
-                        labels: productos.map(d => d.producto),
-                        datasets: [{
-                            label: 'Vendidos',
-                            data: productos.map(d => d.vendidos),
-                            backgroundColor: [kpizzaRed, kpizzaBlue, kpizzaGreen, kpizzaOrange, kpizzaPurple, kpizzaGrey]
-                        }]
-                    }
+            const selectFiltro = document.getElementById('filtro-categoria-js');
+            const tbody = document.querySelector('#tabla-rentabilidad-productos tbody');
+            
+            // 1. Extraer categorías únicas y llenar el ComboBox
+            if (selectFiltro && selectFiltro.options.length <= 1 && productos && productos.length > 0) {
+                const categoriasUnicas = [...new Set(productos.map(p => p.categoria))].filter(Boolean);
+                categoriasUnicas.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.textContent = cat;
+                    selectFiltro.appendChild(option);
                 });
+            }
+
+            // 2. Función maestra que filtra datos, actualiza gráficas y tabla
+            const renderizarProductos = (categoriaSeleccionada) => {
+                let datosFiltrados = productos || [];
                 
-                initChart('ingresosProductosChart', 'bar', {
-                    data: {
-                        labels: productos.map(d => d.producto),
-                        datasets: [{
-                            label: 'Ingresos ($)',
-                            data: productos.map(d => d.ingresos),
-                            backgroundColor: kpizzaGreen,
-                            borderRadius: 4
-                        }]
-                    },
-                    options: { 
-                        indexAxis: 'y', 
-                        plugins: { 
-                            legend: { display: false }, 
-                            tooltip: { callbacks: tooltipCallbacksUSD } 
-                        } 
+                // Aplicar el filtro si no es "Todas"
+                if (categoriaSeleccionada !== 'Todas') {
+                    datosFiltrados = datosFiltrados.filter(p => p.categoria === categoriaSeleccionada);
+                }
+                
+                // Para las gráficas tomamos solo el Top 10 para que se vean bien
+                const top10 = [...datosFiltrados].sort((a, b) => b.vendidos - a.vendidos).slice(0, 10);
+
+                if (datosFiltrados.length > 0) {
+                    // Dibujar gráfica de dona (Cantidades)
+                    initChart('productosChart', 'doughnut', {
+                        data: {
+                            labels: top10.map(d => d.producto),
+                            datasets: [{
+                                label: 'Vendidos',
+                                data: top10.map(d => d.vendidos),
+                                backgroundColor: [kpizzaRed, kpizzaBlue, kpizzaGreen, kpizzaOrange, kpizzaPurple, kpizzaGrey]
+                            }]
+                        }
+                    });
+                    
+                    // Dibujar gráfica de barras (Ingresos)
+                    initChart('ingresosProductosChart', 'bar', {
+                        data: {
+                            labels: top10.map(d => d.producto),
+                            datasets: [{
+                                label: 'Ingresos ($)',
+                                data: top10.map(d => d.ingresos),
+                                backgroundColor: kpizzaGreen,
+                                borderRadius: 4
+                            }]
+                        },
+                        options: { 
+                            indexAxis: 'y', 
+                            plugins: { 
+                                legend: { display: false }, 
+                                tooltip: { callbacks: tooltipCallbacksUSD } 
+                            } 
+                        }
+                    });
+                } else {
+                    // Si no hay datos para esa categoría, destruimos las gráficas para que no queden pegadas
+                    destroyChart('productosChart');
+                    destroyChart('ingresosProductosChart');
+                }
+
+                // 3. Actualizar la Tabla de Detalles
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    if (datosFiltrados.length > 0) {
+                        datosFiltrados.forEach(p => {
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td>${p.producto}</td>
+                                    <td>${p.categoria}</td>
+                                    <td><span class="badge bg-primary">${p.vendidos}</span></td>
+                                    <td><strong>$${p.ingresos.toFixed(2)}</strong></td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-muted">No hay productos vendidos en esta categoría para este rango de fechas.</td></tr>`;
                     }
-                });
+                }
+            };
+
+            // 4. Ejecutar la primera vez al abrir la pestaña
+            if (selectFiltro) {
+                renderizarProductos(selectFiltro.value);
+
+                // 5. Escuchar cuando el administrador cambie de opción en el select
+                selectFiltro.onchange = (e) => {
+                    renderizarProductos(e.target.value);
+                };
             }
         },
         

@@ -1,4 +1,5 @@
 class VentaManager {
+
     constructor() {
         this.preciosBase = window.preciosBase;
         this.tasaDolar = window.tasaDolar || 1;
@@ -39,6 +40,8 @@ class VentaManager {
         
         // Cargar clientes frecuentes al iniciar
         this.cargarClientesFrecuentes();
+        
+        setInterval(() => this.actualizarEstadoMesas(), 3000);
 
         setInterval(() => this.verificarPedidosListos(), 5000); 
 
@@ -380,7 +383,7 @@ guardarNuevoCliente() {
         if (!soloNumeros.test(telefono)) {
             return Swal.fire('Error', "el telefono debe contener solo numeros.", 'error');
         }
-                
+
         if (!direccion || direccion.length < 5) {
             return Swal.fire('Atención', "La dirección es obligatoria su registro.", 'warning');
         }
@@ -683,7 +686,7 @@ async submitOrder() {
                 `,
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'Sí, Enviar a Cocina',
+                confirmButtonText: 'Sí, Enviar a caja',
                 cancelButtonText: 'Revisar',
                 confirmButtonColor: '#ff9800', // Naranja Kpizzas
                 cancelButtonColor: '#6c757d',
@@ -994,10 +997,41 @@ async cargarHistorialPedidos() {
             }
         } catch (error) { console.error(error); }
     }
+// 1. Función para pedir los datos a la base de datos
+    actualizarEstadoMesas() {
+        fetch('api_mesas.php')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    this.renderizarMesas(data.mesas);
+                }
+            })
+            .catch(err => console.error("Error actualizando mesas:", err));
+    }
 
+    // 2. Función para cambiar los colores en pantalla sin parpadeo
+    renderizarMesas(mesas) {
+        mesas.forEach(mesa => {
+            // Buscamos el cuadrito de la mesa en el HTML por su ID
+            const mesaEl = document.querySelector(`.mesa[data-mesa-id="${mesa.id}"]`);
+            if (mesaEl) {
+                // Quitamos colores viejos y ponemos el nuevo que viene de la BD
+                mesaEl.classList.remove('mesa-disponible', 'mesa-ocupada', 'mesa-reservada');
+                mesaEl.classList.add(`mesa-${mesa.estado}`);
 
-
-
+                // Si está ocupada, la bloqueamos para que no le den click por error
+                if (mesa.estado === 'ocupada') {
+                    mesaEl.setAttribute('disabled', 'true');
+                    mesaEl.style.opacity = "0.7";
+                    mesaEl.style.cursor = "not-allowed";
+                } else {
+                    mesaEl.removeAttribute('disabled');
+                    mesaEl.style.opacity = "1";
+                    mesaEl.style.cursor = "pointer";
+                }
+            }
+        });
+    }
 }
 
 // Función global externa para eliminar

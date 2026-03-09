@@ -68,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
                 $total_pedido += (float)$item['precio'];
             }
         }
+        $es_anexo_detalle = $adicion_id ? 1 : 0;
 
         if ($adicion_id) {
             // ============================================
@@ -86,9 +87,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             // IMPORTANTE: NO borramos los detalles anteriores.
 
         } elseif ($edit_id) {
+            } elseif ($edit_id) {
             // ============================================
             // CASO 2: EDICIÓN COMPLETA (CORRECCIÓN)
             // ============================================
+            
+            // 🔥 CORRECCIÓN: Si estamos editando un anexo, forzamos a que siga siendo anexo
+            $stmt_check = $pdo->prepare("SELECT es_anexo FROM comanda WHERE id = ?");
+            $stmt_check->execute([$edit_id]);
+            if ($stmt_check->fetchColumn() == 1) {
+                $es_anexo_detalle = 1;
+            }
+
             $sql_update = "UPDATE comanda SET total = ?, editando = 0, mesa_id = ?, cliente_id = ?, tipo_servicio = ? WHERE id = ?";
             $stmt_update = $pdo->prepare($sql_update);
             $stmt_update->execute([
@@ -105,16 +115,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             $stmt_delete->execute([$comanda_id]);
 
         } else {
-            // ============================================
+           // ============================================
             // CASO 3: NUEVA COMANDA
             // ============================================
-            $sql_insert = "INSERT INTO comanda (usuario_id, mesa_id, cliente_id, estado, tipo_servicio, total, editando) VALUES (?, ?, ?, ?, ?, ?, 0)";
+            
+            // MAGIA: El enrutador condicional
+            $estado_inicial = ($tipo_servicio === 'Llevar') ? 'pendiente' : 'en_preparacion';
+
+            $sql_insert = "INSERT INTO comanda (usuario_id, mesa_id, cliente_id, estado, tipo_servicio, total, editando, es_anexo) VALUES (?, ?, ?, ?, ?, ?, 0, 0)";
             $stmt_insert = $pdo->prepare($sql_insert);
             $stmt_insert->execute([
                 $_SESSION['user']['id'],
                 $tipo_servicio === 'Mesa' ? $mesa_id : NULL,
                 $cliente_id,
-                'en_preparacion',
+                $estado_inicial, // <--- Usamos nuestra variable dinámica
                 $tipo_servicio,
                 $total_pedido
             ]);
@@ -122,17 +136,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
         }
 
         // Insertar detalles (Común para todos: inserta lo que viene en el array 'pedido')
-        $sql_detalle = "INSERT INTO detalle_comanda (comanda_id, producto_id, cantidad, tamanio, precio_unitario) VALUES (?, ?, ?, ?, ?)";
+// --- INSERTAR DETALLES CON LA COLUMNA es_anexo ---
+        $sql_detalle = "INSERT INTO detalle_comanda (comanda_id, producto_id, cantidad, tamanio, precio_unitario, es_anexo) VALUES (?, ?, ?, ?, ?, ?)";
         $stmt_detalle = $pdo->prepare($sql_detalle);
 
         foreach ($pedido_detalle as $item) {
             if ($item['tipo'] === 'Pizza') {
-                $stmt_detalle->execute([$comanda_id, $item['id_base'], 1, $item['tamanio'], (float)$item['precio_base']]);
+                $stmt_detalle->execute([$comanda_id, $item['id_base'], 1, $item['tamanio'], (float)$item['precio_base'], $es_anexo_detalle]);
                 foreach ($item['ingredientes'] as $ingrediente) {
-                    $stmt_detalle->execute([$comanda_id, $ingrediente['id'], 1, $item['tamanio'], (float)$ingrediente['precio']]);
+                    $stmt_detalle->execute([$comanda_id, $ingrediente['id'], 1, $item['tamanio'], (float)$ingrediente['precio'], $es_anexo_detalle]);
                 }
             } elseif (isset($item['tipo']) && $item['tipo'] === 'Bebida') {
-                $stmt_detalle->execute([$comanda_id, $item['id'], 1, 'N/A', (float)$item['precio']]);
+                $stmt_detalle->execute([$comanda_id, $item['id'], 1, 'N/A', (float)$item['precio'], $es_anexo_detalle]);
             }
         }
 
@@ -196,7 +211,7 @@ foreach ($productos as $producto) {
   }
 }
 
-$sql_mesas = "SELECT id, numero, estado FROM mesa ORDER BY numero ASC";
+$sql_mesas = "SELECT id, numero, estado FROM mesa WHERE activo = 1 ORDER BY numero ASC";
 $stmt_mesas = $pdo->query($sql_mesas);
 $mesas = $stmt_mesas->fetchAll();
 ?>
