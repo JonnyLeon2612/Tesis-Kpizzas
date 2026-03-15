@@ -87,7 +87,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['CONTENT_TYPE'], 'a
             // IMPORTANTE: NO borramos los detalles anteriores.
 
         } elseif ($edit_id) {
-            } elseif ($edit_id) {
             // ============================================
             // CASO 2: EDICIÓN COMPLETA (CORRECCIÓN)
             // ============================================

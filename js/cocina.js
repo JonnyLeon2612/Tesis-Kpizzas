@@ -150,40 +150,46 @@ class CocinaManager {
             ? `<button type="button" class="btn btn-success btn-sm" ${estaBloqueado ? 'disabled' : ''} onclick="cocinaManager.marcarComoListo(${p.id})"><i class="fas fa-check me-1"></i>Marcar Listo</button>`
             : `<button type="button" class="btn btn-warning btn-sm" ${estaBloqueado ? 'disabled' : ''} onclick="cocinaManager.volverAPreparacion(${p.id})"><i class="fas fa-undo me-1"></i>Volver</button>`;
 
-        // Construir lista de pizzas
+// Construir lista de pizzas (VERSIÓN ELEGANTE Y MODERNA)
         let pizzasHTML = '';
         if (p.pizzas && p.pizzas.length > 0) {
-            pizzasHTML += `<h6 class="fw-bold border-bottom pb-2 mb-3 text-warning"><i class="fas fa-pizza-slice me-2"></i>Pizzas del Pedido</h6>`;
+            pizzasHTML += `<h6 class="seccion-titulo-elegante"><i class="fas fa-pizza-slice me-2 text-kpizzas"></i>Pizzas del Pedido</h6>`;
             p.pizzas.forEach((pizza, index) => {
                 let ingHTML = '';
                 if (pizza.ingredientes.length > 0) {
-                    ingHTML = `<div class="ms-3 mt-2"><strong class="text-success small">Ingredientes:</strong><div>`;
+                    ingHTML = `
+                        <div class="ingredientes-wrapper">
+                            <span class="ingredientes-label">Lleva los siguientes ingredientes:</span>
+                            <div class="ingredientes-lista">`;
                     pizza.ingredientes.forEach(ing => {
-                        ingHTML += `<span class="badge bg-secondary me-1 mb-1">${ing}</span>`;
+                        ingHTML += `<span class="ingrediente-pill">${ing}</span>`;
                     });
-                    ingHTML += `</div></div>`;
+                    ingHTML += `    </div>
+                        </div>`;
                 }
                 pizzasHTML += `
-                    <div class="pizza-individual mb-3 p-3 border rounded bg-light">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="fw-bold text-primary mb-0">Pizza ${index + 1} - <span class="badge bg-warning text-dark">${pizza.tamanio}</span></h6>
+                    <div class="pizza-card-moderna mb-3">
+                        <div class="pizza-header-moderno">
+                            <span class="pizza-numero">Pizza ${index + 1}</span>
+                            <span class="pizza-tamanio">${pizza.tamanio}</span>
                         </div>
                         ${ingHTML}
                     </div>`;
             });
         }
 
-        // Construir lista de bebidas
+        // Construir lista de bebidas (VERSIÓN ELEGANTE Y MODERNA)
         let bebidasHTML = '';
         if (p.bebidas && p.bebidas.length > 0) {
-            bebidasHTML += `<h6 class="fw-bold border-bottom pb-2 mb-3 text-info mt-3"><i class="fas fa-wine-bottle me-2"></i>Bebidas</h6><div class="row">`;
+            bebidasHTML += `<h6 class="seccion-titulo-elegante mt-4"><i class="fas fa-wine-bottle me-2 text-info"></i>Bebidas</h6>
+            <div class="bebidas-grid">`;
             p.bebidas.forEach(bebida => {
                 bebidasHTML += `
-                    <div class="col-md-6 col-lg-4 mb-2">
-                        <div class="d-flex justify-content-between align-items-center p-2 border rounded bg-white">
-                            <span class="small">${bebida.nombre}</span>
-                            <span class="badge bg-dark">x${bebida.cantidad}</span>
+                    <div class="bebida-card-moderna">
+                        <div class="bebida-info">
+                            <span class="bebida-nombre">${bebida.nombre}</span>
                         </div>
+                        <div class="bebida-cantidad-badge">x${bebida.cantidad}</div>
                     </div>`;
             });
             bebidasHTML += `</div>`;

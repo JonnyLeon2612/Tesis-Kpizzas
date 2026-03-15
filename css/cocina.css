@@ -191,3 +191,147 @@
 .opacity-50 {
     opacity: 0.5;
 }
+
+/* =========================================
+   DISEÑO ELEGANTE Y MODERNO DE COMANDA
+   ========================================= */
+
+/* Contenedor principal de los detalles */
+.detalles-pedido.mostrar {
+    background: #fafafa; /* Gris ultra claro y elegante */
+    border: 1px solid #eaeaea;
+    border-radius: 16px; /* Bordes bien redondeados y modernos */
+    padding: 1.8rem;
+    margin-top: 1rem !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.03); /* Sombra súper suave que da profundidad */
+}
+
+/* Títulos de las secciones */
+.seccion-titulo-elegante {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #a0aab5; /* Gris azulado moderno */
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 1.2rem;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+}
+
+.text-kpizzas {
+    color: var(--kpizzas-red);
+}
+
+/* --- ESTILOS DE LA PIZZA --- */
+.pizza-card-moderna {
+    background: #ffffff;
+    border: 1px solid #f0f0f0;
+    border-left: 5px solid var(--kpizzas-red); /* Tu acento de marca */
+    border-radius: 14px;
+    padding: 1.2rem 1.5rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pizza-card-moderna:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(216, 38, 38, 0.08); /* Brillo sutil rojizo al pasar el mouse */
+}
+
+.pizza-header-moderno {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+}
+
+.pizza-numero {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #2c3e50;
+}
+
+/* El tamaño de la pizza estilo "Badge Apple" */
+.pizza-tamanio {
+    background: linear-gradient(135deg, var(--kpizzas-red) 0%, var(--kpizzas-red-dark) 100%);
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 0.4rem 1.2rem;
+    border-radius: 30px; /* Estilo píldora perfecta */
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 10px rgba(216, 38, 38, 0.3);
+}
+
+/* --- INGREDIENTES MINIMALISTAS --- */
+.ingredientes-wrapper {
+    border-top: 1px dashed #eee;
+    padding-top: 1rem;
+    margin-top: 0.5rem;
+}
+
+.ingredientes-label {
+    font-size: 0.8rem;
+    color: #95a5a6;
+    text-transform: uppercase;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 0.6rem;
+    letter-spacing: 0.5px;
+}
+
+.ingredientes-lista {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+/* Ingredientes como "Pills" elegantes con un toque de tu rojo */
+.ingrediente-pill {
+    background-color: rgba(216, 38, 38, 0.05); /* Fondo blanco-rojizo transparente */
+    color: var(--kpizzas-red-dark);
+    border: 1px solid rgba(216, 38, 38, 0.15);
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+/* --- BEBIDAS EN GRID --- */
+.bebidas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.bebida-card-moderna {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #f0f0f0;
+    border-radius: 14px;
+    padding: 0.8rem 1.2rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.bebida-nombre {
+    font-weight: 700;
+    color: #34495e;
+    font-size: 1.1rem;
+}
+
+/* Circulito oscuro elegante para la cantidad */
+.bebida-cantidad-badge {
+    background: #2c3e50; /* Gris muy oscuro, casi negro azulado */
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.1rem;
+    min-width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    box-shadow: 0 4px 6px rgba(44, 62, 80, 0.2);
+}
