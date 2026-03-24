@@ -470,7 +470,8 @@ guardarNuevoCliente() {
     // ==========================================
 
     updatePreciosDisplay() {
-        const tamanioElement = document.querySelector('input[name="tamanio"]:checked');
+        const radio = document.querySelector('input[name="tamanio"]:checked')
+        if (!radio) return;;
         if (!tamanioElement) return;
         const tamanio = tamanioElement.value;
         document.querySelectorAll('.ingrediente-checkbox').forEach(checkbox => {
@@ -489,40 +490,58 @@ guardarNuevoCliente() {
         });
     }
 
-    updateCurrentItemTotal() {
+updateCurrentItemTotal() {
         const radio = document.querySelector('input[name="tamanio"]:checked');
-        if(!radio) return;
-        const tamanio = radio.value;
-        let total = this.preciosBase[tamanio];
         const lista = document.getElementById('factura-list-current');
+        let total = 0;
         lista.innerHTML = '';
 
-        const itemBase = document.createElement('li');
-        itemBase.className = 'list-group-item d-flex justify-content-between align-items-center px-0';
-        itemBase.innerHTML = `<span>${this.preciosBase.nombre} (${tamanio})</span><span class="fw-bold">$${total.toFixed(2)}</span>`;
-        lista.appendChild(itemBase);
+        // VALIDACIÓN: Si no hay tamaño, pero intentó marcar INGREDIENTES
+        if (!radio) {
+            const ingredientesMarcados = document.querySelectorAll('.ingrediente-checkbox:checked');
+            if (ingredientesMarcados.length > 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: '¡Falta el tamaño!',
+                    text: 'Debes elegir el tamaño de la pizza antes de agregarle ingredientes extra.',
+                    confirmButtonColor: '#D82626'
+                });
+                // Le desmarcamos solo los ingredientes
+                ingredientesMarcados.forEach(cb => cb.checked = false);
+            }
+        }
 
-        document.querySelectorAll('.ingrediente-checkbox:checked').forEach(checkbox => {
-            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
-            const nombre = checkbox.getAttribute('data-nombre');
-            const precio = precios[tamanio];
-            total += precio;
-            const item = document.createElement('li');
-            item.className = 'list-group-item d-flex justify-content-between align-items-center px-0';
-            item.innerHTML = `<span>${nombre}</span><span class="fw-bold">$${precio.toFixed(2)}</span>`;
-            lista.appendChild(item);
+        // 1. Mostrar Pizza si hay tamaño seleccionado
+        if (radio) {
+            const tamanio = radio.value;
+            total += this.preciosBase[tamanio];
+            
+            const itemBase = document.createElement('li');
+            itemBase.className = 'list-group-item d-flex justify-content-between align-items-center px-0 border-bottom-0 pb-1';
+            itemBase.innerHTML = `<span><i class="fas fa-dot-circle text-danger me-2 small"></i>${this.preciosBase.nombre} (${tamanio})</span><span class="fw-bold">$${this.preciosBase[tamanio].toFixed(2)}</span>`;
+            lista.appendChild(itemBase);
+
+            // Sumar y mostrar ingredientes
+            document.querySelectorAll('.ingrediente-checkbox:checked').forEach(cb => {
+                const p = JSON.parse(cb.getAttribute('data-precios'))[tamanio]; 
+                total += p;
+                lista.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center px-0 border-0 py-1 ps-4 text-muted small"><span>+ ${cb.getAttribute('data-nombre')}</span><span>$${p.toFixed(2)}</span></li>`;
+            });
+        }
+
+        // 2. Sumar y mostrar Bebidas (Totalmente independientes de la pizza)
+        const bebidasMarcadas = document.querySelectorAll('.bebida-checkbox:checked');
+        bebidasMarcadas.forEach(cb => {
+            const p = JSON.parse(cb.getAttribute('data-precios'))['Pequena']; 
+            total += p;
+            lista.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center px-0 border-0 py-1 ps-2 text-info small"><span><i class="fas fa-wine-bottle me-1"></i> ${cb.getAttribute('data-nombre')}</span><span>$${p.toFixed(2)}</span></li>`;
         });
 
-        document.querySelectorAll('.bebida-checkbox:checked').forEach(checkbox => {
-            const precios = JSON.parse(checkbox.getAttribute('data-precios'));
-            const nombre = checkbox.getAttribute('data-nombre');
-            const precio = precios['Pequena'];
-            total += precio;
-            const item = document.createElement('li');
-            item.className = 'list-group-item d-flex justify-content-between align-items-center px-0 text-info';
-            item.innerHTML = `<span>${nombre}</span><span class="fw-bold">$${precio.toFixed(2)}</span>`;
-            lista.appendChild(item);
-        });
+        // 3. Mensaje por defecto si no hay ni pizza ni bebidas seleccionadas
+        if (!radio && bebidasMarcadas.length === 0) {
+            lista.innerHTML = '<li class="list-group-item text-muted text-center small border-0 bg-transparent py-3">Selecciona una pizza o bebidas para empezar...</li>';
+        }
+
         this.actualizarTotalBolivares(total);
     }
 
@@ -534,57 +553,68 @@ guardarNuevoCliente() {
 
 addToOrder() {
         const radioTamanio = document.querySelector('input[name="tamanio"]:checked');
-        if(!radioTamanio) return;
-        const tamanio = radioTamanio.value;
         const ingredientes = Array.from(document.querySelectorAll('.ingrediente-checkbox:checked'));
         const bebidas = Array.from(document.querySelectorAll('.bebida-checkbox:checked'));
 
-        // Preparamos el objeto Pizza (por si acaso se usa)
-        const pizza = {
-            tipo: 'Pizza',
-            id_base: this.preciosBase.id,
-            tamanio: tamanio,
-            precio_base: this.preciosBase[tamanio],
-            ingredientes: ingredientes.map(ing => ({
-                id: ing.value,
-                nombre: ing.getAttribute('data-nombre'),
-                precio: JSON.parse(ing.getAttribute('data-precios'))[tamanio]
-            }))
-        };
+        // VALIDACIÓN: Si no hay NI tamaño NI bebidas, entonces sí bloqueamos
+        if (!radioTamanio && bebidas.length === 0) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Nada seleccionado',
+                text: 'Debe seleccionar un tamaño de pizza o al menos una bebida para agregar al pedido.',
+                confirmButtonColor: '#D82626'
+            });
+            return;
+        }
+
+        // Construir objeto pizza SOLO si hay un tamaño seleccionado
+        let pizza = null;
+        if (radioTamanio) {
+            const tamanio = radioTamanio.value;
+            pizza = {
+                tipo: 'Pizza',
+                id_base: this.preciosBase.id,
+                tamanio: tamanio,
+                precio_base: this.preciosBase[tamanio],
+                ingredientes: ingredientes.map(ing => ({
+                    id: ing.value,
+                    nombre: ing.getAttribute('data-nombre'),
+                    precio: JSON.parse(ing.getAttribute('data-precios'))[tamanio]
+                }))
+            };
+        }
 
         // --- CASO 1: EDICIÓN (Se mantiene igual) ---
         if (this.indexSiendoEditado !== null) {
-            this.orderList[this.indexSiendoEditado] = pizza;
+            if (pizza) {
+                this.orderList[this.indexSiendoEditado] = pizza;
+            }
             this.indexSiendoEditado = null; 
             const btn = document.getElementById('agregar-btn');
             if (btn) {
                 btn.innerHTML = '<i class="fas fa-plus-circle me-2"></i>Agregar al Pedido';
                 btn.classList.replace('btn-primary', 'btn-outline-secondary');
             }
-            this.showToast('Pizza actualizada', 'success');
-            this.limpiarFormulario(); 
-            this.updateCurrentItemTotal();
-            this.updateFullOrderSummary();
-            return;
+            this.showToast('Actualizado', 'success');
         } 
-
         // --- CASO 2: AGREGADO AUTOMÁTICO INTELIGENTE ---
-        
-        // A. Si seleccionaste ingredientes, quieres PIZZA (+ Bebidas si las hay)
-        if (ingredientes.length > 0) {
-            this.orderList.push(pizza);
-            this.agregarBebidasAlCarrito(bebidas);
-            this.showToast('Pizza y bebidas agregadas', 'success');
-        } 
-        // B. Si NO hay ingredientes pero SÍ hay bebidas, quieres SOLO BEBIDAS
-        else if (bebidas.length > 0) {
-            this.agregarBebidasAlCarrito(bebidas);
-            this.showToast('Bebidas agregadas', 'success');
-        }
-        // C. Si no hay nada seleccionado, asumimos que quieres una Pizza Base sola
         else {
-            this.orderList.push(pizza);
-            this.showToast('Pizza Base agregada', 'success');
+            // A. Si hay Pizza Y Bebidas
+            if (pizza && bebidas.length > 0) {
+                this.orderList.push(pizza);
+                this.agregarBebidasAlCarrito(bebidas);
+                this.showToast('Pizza y bebidas agregadas', 'success');
+            } 
+            // B. Si NO hay Pizza pero SÍ hay Bebidas
+            else if (!pizza && bebidas.length > 0) {
+                this.agregarBebidasAlCarrito(bebidas);
+                this.showToast('Bebidas agregadas', 'success');
+            } 
+            // C. Si hay Pizza pero NO Bebidas
+            else if (pizza) {
+                this.orderList.push(pizza);
+                this.showToast('Pizza agregada', 'success');
+            }
         }
 
         this.limpiarFormulario();
@@ -606,11 +636,16 @@ addToOrder() {
     }
 
     // Función para limpiar checkboxes y reiniciar formulario
+// Función para limpiar checkboxes y reiniciar formulario al estado "En Blanco"
     limpiarFormulario() {
+        // 1. Limpiamos todos los checkboxes de ingredientes y bebidas
         document.querySelectorAll('.ingrediente-checkbox, .bebida-checkbox').forEach(cb => cb.checked = false);
-        // Reseteamos el tamaño a pequeña
-        const radioPequena = document.getElementById('pequena');
-        if(radioPequena) radioPequena.checked = true;
+        
+        // 2. MODIFICADO: Desmarcamos TODOS los radios de tamaño para que empiece en blanco
+        document.querySelectorAll('input[name="tamanio"]').forEach(radio => radio.checked = false);
+
+        // 3. Limpiamos los precios mostrados en los labels (para que no se queden los precios de la última pizza seleccionada)
+        document.querySelectorAll('.precios-display, .precios-display-bebida').forEach(span => span.textContent = '');
     }
 
     updateFullOrderSummary() {
@@ -627,8 +662,14 @@ addToOrder() {
                 total += subtotal;
                 const li = document.createElement('li');
                 li.className = 'list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent';
-                li.innerHTML = `<div class="d-flex align-items-center"><button type="button" class="btn btn-sm btn-link text-primary p-0 me-2" onclick="window.ventaManagerInstance.cargarItemParaEditar(${index})"><i class="fas fa-pen"></i></button><span>Pizza ${index + 1} (${item.tamanio})</span></div><span class="fw-bold">$${subtotal.toFixed(2)}</span>`;
-                lista.appendChild(li);
+li.innerHTML = `
+    <div class="d-flex align-items-center">
+        <button type="button" class="btn btn-sm btn-link text-primary p-0 me-2" onclick="window.ventaManagerInstance.cargarItemParaEditar(${index})"><i class="fas fa-pen"></i></button>
+        <button type="button" class="btn btn-sm btn-link text-danger p-0 me-2" onclick="window.ventaManagerInstance.eliminarItemCarrito(${index})"><i class="fas fa-times"></i></button>
+        <span>Pizza ${index + 1} (${item.tamanio})</span>
+    </div>
+    <span class="fw-bold">$${subtotal.toFixed(2)}</span>
+`;                lista.appendChild(li);
             } else {
                 subtotal = item.precio;
                 total += subtotal;
@@ -737,6 +778,14 @@ async submitOrder() {
             
             if (result.success) {
                 this.showSuccessAlert(result.message, result.comanda_id);
+                 
+                // --- NUEVO: OLVIDAR EL PEDIDO PARA QUE VUELVA A SONAR ---
+                if (this.editandoComandaId) {
+                    this.notificacionesMostradas.delete(this.editandoComandaId);
+                }
+                if (this.adicionandoComandaId) {
+                    this.notificacionesMostradas.delete(this.adicionandoComandaId);
+                }
                 
                 // Resetear todo
                 this.orderList = [];
@@ -875,22 +924,60 @@ async submitOrder() {
     // SECCIÓN 5: UI & NOTIFICACIONES
     // ==========================================
 
-    async actualizarUI() {
+async actualizarUI() {
         try {
             const response = await fetch('./notificaciones_manager.php');
             const result = await response.json();
             const lista = document.getElementById('notif-list');
             const contador = document.getElementById('notif-count');
             if(!lista || !contador) return;
+            
             lista.innerHTML = '';
+            let noLeidasCount = 0; // Solo contaremos las que NO han sido leídas
+
             if (result.notificaciones) {
                 result.notificaciones.forEach(n => {
-                    lista.innerHTML += `<div class="notif-item shadow-sm p-2 mb-2 bg-white border rounded"><strong>${n.mensaje}</strong><br><small class="text-muted">${n.fecha_creacion}</small></div>`;
+                    const hora = n.fecha_creacion.split(' ')[1].substring(0,5);
+
+                    // SI AÚN NO SE HA ENTREGADO (Falta por leer)
+                    if (n.estado === 'no_leido') {
+                        noLeidasCount++;
+                        lista.innerHTML += `
+                        <div class="notif-item shadow-sm p-2 mb-2 bg-white border rounded d-flex justify-content-between align-items-center border-start border-4 border-warning">
+                            <div>
+                                <strong class="small">${n.mensaje}</strong><br>
+                                <small class="text-muted" style="font-size:0.75rem;"><i class="far fa-clock me-1"></i>${hora}</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-success rounded-circle px-2 shadow-sm" onclick="window.ventaManagerInstance.marcarNotificacionLeida(${n.id})" title="Marcar como entregado a la mesa">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        </div>`;
+                    } 
+                    // SI YA SE ENTREGÓ (Leída)
+                    else {
+                        lista.innerHTML += `
+                        <div class="notif-item shadow-sm p-2 mb-2 bg-light border rounded d-flex justify-content-between align-items-center border-start border-4 border-success" style="opacity: 0.6;">
+                            <div>
+                                <strong class="small text-muted"><del>${n.mensaje}</del></strong><br>
+                                <small class="text-success fw-bold" style="font-size:0.75rem;"><i class="fas fa-check-double me-1"></i>Entregado - ${hora}</small>
+                            </div>
+                        </div>`;
+                    }
                 });
-                contador.textContent = result.notificaciones.length;
-                contador.style.display = result.notificaciones.length > 0 ? 'flex' : 'none';
+
+                // El globito rojo de la campana solo muestra las pendientes
+                contador.textContent = noLeidasCount;
+                contador.style.display = noLeidasCount > 0 ? 'flex' : 'none';
             }
         } catch (error) { console.error(error); }
+    }
+
+    async marcarNotificacionLeida(notif_id) {
+        const fd = new FormData(); 
+        fd.append('action', 'marcar_leida');
+        fd.append('id', notif_id);
+        await fetch('./notificaciones_manager.php', { method: 'POST', body: fd });
+        this.actualizarUI(); // Refresca el panel para que desaparezca
     }
 
     async verificarPedidosListos() {
@@ -910,6 +997,8 @@ async submitOrder() {
                         const sonido = document.getElementById('notificacion-sonido');
                         if(sonido) { sonido.currentTime = 0; sonido.play().catch(e => {}); }
                         this.actualizarUI();
+
+                        await new Promise(resolve => setTimeout(resolve, 5000));
                     }
                 }
             }
@@ -996,6 +1085,25 @@ async cargarHistorialPedidos() {
                 });
             }
         } catch (error) { console.error(error); }
+    }
+    // --- NUEVA FUNCIÓN PARA EL CHECK DE ENTREGADO ---
+    async marcarNotificacionLeida(notif_id) {
+        try {
+            // 1. Enviamos la petición al servidor para marcarla como leída
+            const fd = new FormData(); 
+            fd.append('action', 'marcar_leida');
+            fd.append('id', notif_id);
+            
+            await fetch('./notificaciones_manager.php', { method: 'POST', body: fd });
+            
+            // 2. Mostramos un mensaje de éxito rápido para que el mesero sepa que funcionó
+            this.showToast('¡Pizza marcada como entregada!', 'success');
+            
+            // 3. Recargamos la lista visual de notificaciones (ahora desaparecerá)
+            this.actualizarUI(); 
+        } catch (error) {
+            console.error("Error al marcar como leída:", error);
+        }
     }
 // 1. Función para pedir los datos a la base de datos
     actualizarEstadoMesas() {

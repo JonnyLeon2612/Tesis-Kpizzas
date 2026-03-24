@@ -410,3 +410,400 @@ footer {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* =============================================
+   MEJORAS PARA LA VISTA DE TOMA DE PEDIDOS (MENÚ)
+   ============================================= */
+
+/* Ocultar los checkboxes y radios nativos */
+.ingrediente-checkbox,
+.bebida-checkbox,
+input[name="tamanio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Convertir las etiquetas en tarjetas cliqueables */
+.form-check-label {
+  display: block !important;
+  width: 100%;
+  padding: 1rem 0.75rem;
+  background-color: #fff;
+  border: 2px solid #dee2e6;
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #212529;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  margin: 0;
+  min-height: 70px; /* Altura mínima para área táctil cómoda */
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Espacio entre tarjetas */
+.col {
+  margin-bottom: 12px;
+}
+
+/* Efecto hover (solo escritorio) */
+.form-check-label:hover {
+  border-color: var(--kpizzas-red);
+  background-color: #fff8f8;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(216,38,38,0.1);
+}
+
+/* Estilo cuando el checkbox/radio está seleccionado */
+.ingrediente-checkbox:checked + .form-check-label,
+.bebida-checkbox:checked + .form-check-label,
+input[name="tamanio"]:checked + .form-check-label {
+  background-color: #fff0f0;
+  border-color: var(--kpizzas-red);
+  color: var(--kpizzas-red);
+  font-weight: 600;
+  box-shadow: 0 0 0 3px rgba(216,38,38,0.2);
+}
+
+/* Para los radios de tamaño (que no tienen label con clase específica) */
+input[name="tamanio"] + .form-check-label {
+  /* Ajuste si es necesario */
+}
+
+/* Los precios dentro de la tarjeta */
+.precios-display,
+.precios-display-bebida {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #28a745;
+  background: #e9f7e9;
+  padding: 0.4rem 0.8rem;
+  border-radius: 30px;
+  white-space: nowrap;
+}
+
+/* Ajustar el contenedor de los radios de tamaño */
+/* Contenedor principal de los tamaños (asegúrate de que el div que envuelve los tamaños tenga esta clase) */
+.justify-content-around {
+  display: flex !important;
+  flex-direction: row !important; /* Fuerza la alineación horizontal */
+  flex-wrap: nowrap !important; /* Evita que bajen a la siguiente línea */
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+/* Cada opción individual dentro del contenedor */
+.justify-content-around .form-check {
+  flex: 1; /* Hace que todos los botones ocupen exactamente el mismo ancho */
+  min-width: 0; /* Permite que se encojan si la pantalla es pequeña */
+  padding: 0;
+  margin: 0;
+  border: none;
+}
+
+/* Ajustes a la tarjeta (label) para que se vea centrada */
+.justify-content-around .form-check-label {
+  width: 100%;
+  text-align: center;
+  font-size: 0.9rem;
+  justify-content: center; /* Centra el texto horizontalmente */
+  min-height: 60px;
+  padding: 0.8rem 0.5rem;
+  font-size: 1rem;
+}
+/* Títulos de sección más grandes */
+h2.h5 {
+  font-size: 1.3rem !important;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  border-left: 5px solid var(--kpizzas-red);
+  padding-left: 15px;
+}
+
+/* Mejorar la lista de la factura (resumen) */
+#factura-list-current .list-group-item,
+#factura-list-full .list-group-item {
+  padding: 12px 15px;
+  font-size: 1rem;
+  border-left: none;
+  border-right: none;
+}
+
+/* Botones principales más grandes y con mejor contraste */
+#agregar-btn,
+button[type="submit"] {
+  padding: 16px !important;
+  font-size: 1.2rem !important;
+  font-weight: bold;
+  border-radius: 50px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* =============================================
+   MEJORAS ESPECÍFICAS PARA MÓVILES
+   ============================================= */
+@media (max-width: 768px) {
+    
+  /* Ingredientes en 2 columnas en móviles medianos */
+  .row-cols-md-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  /* En pantallas muy pequeñas, una columna */
+  @media (max-width: 480px) {
+    .row-cols-md-2 {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Ajustar padding de las tarjetas para que quepa mejor */
+  .form-check-label {
+    padding: 0.8rem 0.5rem;
+    font-size: 1rem;
+    min-height: 65px;
+  }
+
+  /* Precios más compactos */
+  .precios-display,
+  .precios-display-bebida {
+    font-size: 0.9rem;
+    padding: 0.3rem 0.5rem;
+  }
+
+  /* Botón de agregar más compacto */
+  #agregar-btn {
+    margin-top: 10px;
+  }
+
+  /* Separar más la sección de resumen */
+  #order-form-section .row > .col-md-6:last-child {
+    margin-top: 2rem;
+  }
+
+  /* El total en letras más grandes */
+  .h4.text-kpizzas-red {
+    font-size: 1.8rem !important;
+  }
+
+  /* Fondo del resumen más visible */
+  .bg-light.card {
+    background-color: #ffffff !important;
+    border: 1px solid #ddd;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+}
+
+/* =============================================
+   OPCIONAL: QUITAR BORDES DUPLICADOS DE LAS CARDS ORIGINALES
+   ============================================= */
+/* Si los divs con clase "card" envuelven a los checkboxes, 
+   podemos eliminar su borde para que no compita con la nueva tarjeta */
+.col > .card {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* =============================================
+   MEJORAS RESPONSIVE PARA CRM DE CLIENTES (PARA LLEVAR)
+   ============================================= */
+
+/* Ajustes generales del contenedor principal en móvil */
+@media (max-width: 768px) {
+  .cliente-filter-container {
+    padding: 20px 15px;
+    margin: 10px 5px;
+    border-radius: 20px;
+  }
+
+  .filter-header h3 {
+    font-size: 1.5rem;
+    text-align: center;
+  }
+
+  .filter-header p {
+    font-size: 1rem;
+    text-align: center;
+  }
+
+  /* Buscador: input más grande y con bordes redondeados */
+  .search-box-wrapper .input-group {
+    border-radius: 50px;
+  }
+
+  .search-box-wrapper input {
+    padding: 15px 20px;
+    font-size: 1.1rem;
+    height: auto;
+  }
+
+  .input-group-text {
+    padding-left: 20px;
+    background: transparent;
+    border: none;
+    color: #ff9800;
+  }
+
+  /* Resultados del autocompletado */
+  .autocomplete-results {
+    max-height: 300px;
+    border-radius: 0 0 20px 20px;
+  }
+
+  .result-item {
+    padding: 15px 20px;
+    font-size: 1rem;
+  }
+
+  .result-item strong {
+    font-size: 1.1rem;
+  }
+
+  .result-item small {
+    font-size: 0.9rem;
+    padding: 4px 12px;
+  }
+
+  /* Botón "Nuevo Cliente" más grande */
+  .actions-row .btn-outline-primary {
+    padding: 12px 25px;
+    font-size: 1.1rem;
+    border-radius: 50px;
+    border-width: 2px;
+  }
+
+  /* Formulario de nuevo cliente: apilar campos y hacerlos más grandes */
+  #form-nuevo-cliente .row.g-2 {
+    flex-direction: column;
+  }
+
+  #form-nuevo-cliente .col-md-4,
+  #form-nuevo-cliente .col-md-8,
+  #form-nuevo-cliente .col-md-6 {
+    width: 100%;
+    padding: 0 5px;
+  }
+
+  #form-nuevo-cliente .form-label {
+    font-size: 1rem;
+    margin-bottom: 5px;
+  }
+
+  #form-nuevo-cliente .form-control {
+    padding: 14px;
+    font-size: 1.1rem;
+    border-radius: 12px;
+  }
+
+  #form-nuevo-cliente .btn {
+    padding: 14px 25px;
+    font-size: 1.1rem;
+    border-radius: 50px;
+    margin-top: 10px;
+  }
+
+  /* Carrusel de clientes frecuentes */
+  .frequent-grid {
+    gap: 12px;
+    padding: 10px 0 15px;
+  }
+
+  .freq-card {
+    min-width: 130px;
+    padding: 15px 10px;
+    border-radius: 20px;
+  }
+
+  .freq-card i {
+    font-size: 2.2rem;
+  }
+
+  .freq-card span {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  /* Tarjeta de cliente seleccionado */
+  .selected-client-card {
+    padding: 18px;
+    border-radius: 18px;
+    flex-wrap: wrap;
+  }
+
+  .selected-client-card .icon-box {
+    width: 60px;
+    height: 60px;
+    font-size: 28px;
+    margin-right: 15px;
+  }
+
+  .selected-client-card .client-data {
+    flex: 1;
+  }
+
+  .selected-client-card .client-data h4 {
+    font-size: 1.3rem;
+  }
+
+  .selected-client-card .client-data small {
+    font-size: 0.95rem;
+  }
+
+  .selected-client-card .btn-outline-danger {
+    padding: 8px 16px;
+    font-size: 1rem;
+    border-radius: 30px;
+    margin-top: 10px;
+    width: 100%;
+  }
+
+  /* Botón "CONTINUAR AL MENÚ" más grande */
+  #btn-siguiente-menu {
+    padding: 18px !important;
+    font-size: 1.3rem !important;
+    border-radius: 50px;
+  }
+
+  .footer-actions .btn-outline-secondary {
+    padding: 16px;
+    font-size: 1.1rem;
+    border-radius: 50px;
+  }
+
+  /* Ajustes para pantallas muy pequeñas (menos de 400px) */
+  @media (max-width: 400px) {
+    .freq-card {
+      min-width: 110px;
+      padding: 12px 8px;
+    }
+
+    .freq-card i {
+      font-size: 1.8rem;
+    }
+
+    .selected-client-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .selected-client-card .icon-box {
+      margin-bottom: 10px;
+    }
+
+    .selected-client-card .btn-outline-danger {
+      margin-left: 0 !important;
+    }
+  }
+}
