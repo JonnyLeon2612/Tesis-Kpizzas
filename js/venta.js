@@ -352,10 +352,10 @@ backToTables() {
         const form = document.getElementById('form-nuevo-cliente');
         if(form) form.style.display = (form.style.display === 'none') ? 'block' : 'none';
     }
-
 guardarNuevoCliente() {
-        const nombre = document.getElementById('new-nombre').value.trim();
-        const cedula = document.getElementById('new-cedula').value.trim();
+        // CORRECCIÓN: Usar los IDs exactos que están en venta.php
+        const nombre = document.getElementById('cli_nombre').value.trim();
+        const cedula = document.getElementById('cli_cedula').value.trim();
         let telefono = document.getElementById('new-telefono').value.trim();
         const direccion = document.getElementById('new-direccion').value.trim();
 
@@ -375,8 +375,8 @@ guardarNuevoCliente() {
             return Swal.fire('Error', "La cédula debe contener solo numeros.<br><small>(No incluya puntos, letras ni la 'V-')</small>", 'error');
         }
 
-        // Validación de Teléfono (limpiamos guiones por si acaso y luego verificamos que queden puros números)
-        telefono = telefono.replace(/[-\s+]/g, ''); // Quita espacios y guiones automáticamente
+        // Validación de Teléfono
+        telefono = telefono.replace(/[-\s+]/g, ''); 
         if (!telefono || telefono.length < 10) {
             return Swal.fire('Atención', "Ingrese un número de teléfono válido.", 'warning');
         }
@@ -407,15 +407,14 @@ guardarNuevoCliente() {
                 });
                 this.toggleNuevoClienteForm(); 
                 
-                // Limpiar form
-                document.getElementById('new-nombre').value = '';
-                document.getElementById('new-cedula').value = '';
+                // CORRECCIÓN: Limpiar el form usando los IDs correctos
+                document.getElementById('cli_nombre').value = '';
+                document.getElementById('cli_cedula').value = '';
                 document.getElementById('new-telefono').value = '';
                 document.getElementById('new-direccion').value = '';
                 
                 this.showToast('Cliente registrado correctamente', 'success');
             } else {
-                // Muestra los errores que vienen desde PHP
                 Swal.fire({
                     title: 'Verifique los datos',
                     html: res.message, 

@@ -497,7 +497,7 @@
 
                 <div class="mt-4">
                   <button type="submit" class="btn btn-lg btn-kpizzas-red w-100 fw-bold">
-                    <i class="fas fa-paper-plane me-2"></i>Enviar Pedido a Cocina
+                    <i class="fas fa-paper-plane me-2"></i>Enviar Pedido
                   </button>
                 </div>
               </form>
